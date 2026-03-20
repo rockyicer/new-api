@@ -549,3 +549,647 @@ frontend build succeeds
 - 方案已确认。
 - 历史日志支持已确认为硬要求。
 - 当前计划中已无待确认阻塞项，可以进入实现阶段。
+
+---
+
+## 8. 新增需求：支持管理员或普通用户按 API 令牌配置每日或每月额度并立即拦截（已确认采用方案 B）
+
+### 8.1 现状检查结论
+
+- 项目**已经存在**订阅额度重置机制：
+  - 数据模型：`model/subscription.go`
+  - 周期枚举：`daily / weekly / monthly / custom / never`
+  - 重置执行：`model.ResetDueSubscriptions(...)`
+  - 后台任务：`service/subscription_reset_task.go`
+  - 启动入口：`main.go` 中的 `service.StartSubscriptionQuotaResetTask()`
+- 项目**已经存在**普通用户与管理员共用的 token 管理入口：
+  - 前端页面：`/console/token`
+  - 前端创建/编辑组件：`web/src/components/table/tokens/modals/EditTokenModal.jsx`
+  - 后端接口：`/api/token/*`
+  - 权限中间件：`middleware.UserAuth()`
+- 项目**还不存在**按 API 令牌维度的周期额度限制：
+  - `model.Token` 目前只有 `remain_quota / used_quota / unlimited_quota`
+  - `model.ValidateUserToken(...)` 只校验状态、过期、总额度
+  - `service.PreConsumeTokenQuota(...)` / `service.BillingSession` / `service/task_billing.go` 只处理总额度扣减与返还，不处理日/月额度窗口
+- 结论：
+  - 可以复用“订阅周期重置”的设计经验；
+  - 这个需求天然适合落在现有 token 管理页，而不是新建用户设置页；
+  - 但 token 周期限额不能直接照搬订阅任务，否则会把“立即拦截”错误地依赖在定时任务上。
+
+### 8.2 需求范围与首版边界
+
+- 配置主体：`API Token`，并且**同一账户下的不同 token 可以独立配置不同的周期额度**
+- 适用角色：**令牌拥有者**，包括普通用户和管理员；两者都走同一套 token 管理页与 `/api/token/*` 接口
+- 配置入口：**只放在 token 管理页的创建/编辑侧栏 `EditTokenModal` 中**，不新增用户设置页，不新增独立配置页面
+- 新增配置项：
+  - `quota_period`
+    - `none`
+    - `daily`
+    - `monthly`
+  - `quota_limit`
+- 交互要求：
+  - 普通用户或管理员在 token 管理页点击“添加令牌”进入创建态后，就能直接设置“日额度 / 月额度”
+  - 普通用户或管理员在 token 管理页打开已有 token 的编辑态后，也能直接设置“日额度 / 月额度”
+  - 首版验收以“新建 token 可配置并保存成功，编辑已有 token 也可配置并保存成功”为准
+- 限制语义：
+  - 与当前 `remain_quota` 总额度并行存在；
+  - 任一条件不满足都要拦截请求；
+  - `UnlimitedQuota=true` 不应绕过周期额度限制
+- 恢复语义：
+  - `daily` 到次日窗口自动恢复；
+  - `monthly` 到下月窗口自动恢复；
+  - 恢复必须由请求链路懒触发完成，不能依赖后台任务恰好准点跑到
+- 额度单位：
+  - 首版仍沿用仓库现有“quota 单位”作为后端存储与结算单位；
+  - 管理端文案明确它表示“美元等值额度”；
+  - 不单独引入新的 money ledger 或独立汇率表。
+
+### 8.3 已确认方案 B
+
+- 采用 `token` 持久化周期窗口状态：
+  - `quota_period`
+  - `quota_limit`
+  - 当前窗口已用额度
+  - 上次重置时间
+  - 下次重置时间
+- 采用请求链路懒重置：
+  - 请求到来时判断是否跨日 / 跨月
+  - 若跨窗口则先滚动窗口，再做额度判定
+- 采用同步拦截：
+  - 在进入上游前完成预扣费检查
+  - 超限立即拒绝，不依赖后台任务
+- 采用同步结算与回滚：
+  - 差额补扣
+  - 差额返还
+  - 异步任务退款 / 重算
+  - 都要同步维护当前窗口已用额度
+- 明确不采用的执行路线：
+  - 不采用“只靠定时任务重置”的方案
+  - 不采用“每次实时聚合日志表求和”的方案
+
+### 8.4 已确认设计
+
+#### 8.4.1 数据模型
+
+- 在 `model.Token` 中新增字段：
+
+```go
+QuotaPeriod        string `json:"quota_period" gorm:"type:varchar(16);default:'none'"`
+QuotaLimit         int    `json:"quota_limit" gorm:"default:0"`
+QuotaUsedInPeriod  int    `json:"quota_used_in_period" gorm:"default:0"`
+QuotaLastResetTime int64  `json:"quota_last_reset_time" gorm:"type:bigint;default:0"`
+QuotaNextResetTime int64  `json:"quota_next_reset_time" gorm:"type:bigint;default:0;index"`
+```
+
+- 设计约束：
+  - `quota_period=none` 或 `quota_limit<=0` 视为未启用周期额度
+  - `QuotaUsedInPeriod` 仅记录当前窗口已占用额度
+  - 不复用 `TokenStatusExhausted` 表示周期超限；否则新周期恢复会被状态机卡死
+
+#### 8.4.2 模型辅助函数
+
+- 建议新增文件：`model/token_period_quota.go`
+- 建议新增辅助函数：
+  - `NormalizeTokenQuotaPeriod(period string) string`
+  - `CalcTokenQuotaNextResetTime(base time.Time, period string) int64`
+  - `RefreshTokenQuotaWindow(token *Token, now time.Time) (changed bool)`
+  - `CanConsumeTokenPeriodQuota(token *Token, quota int) error`
+  - `ApplyTokenPeriodQuotaDelta(...)`
+- 关键策略：
+  - 每次校验或扣费前，先判断是否跨窗口；
+  - 若已跨窗口，则先把 `QuotaUsedInPeriod` 清零并滚动 `QuotaLastResetTime / QuotaNextResetTime`；
+  - 这个“懒重置”必须在同步请求链路中完成。
+
+#### 8.4.3 一致性策略
+
+- 周期限额启用后，不能继续完全依赖现有异步更新路径：
+  - `BatchUpdateTypeTokenQuota` 会延迟 DB 写入，不满足“立即拦截”
+  - Redis 目前只对 `RemainQuota` 做增减，不会同步 `QuotaUsedInPeriod`
+- 首版建议：
+  - **对启用了周期额度的 token，跳过 BatchUpdate 聚合路径，改为同步 DB 更新**
+  - **对启用了周期额度的 token，命中 Redis 缓存后仍需回源 DB 获取最新窗口状态**
+  - 成功写入后刷新整条 token 缓存，而不是只增减 `RemainQuota`
+- 并发要求：
+  - 周期额度的“检查 + 扣减/返还”必须放在同一条模型写路径内；
+  - 不能把“先读后判定”和“后写入”散落在多个 service 层函数中。
+
+#### 8.4.4 拦截与扣费链路
+
+- 需要覆盖的主链路：
+  - `middleware/auth.go` / `model.ValidateUserToken(...)`
+  - `service.PreConsumeTokenQuota(...)`
+  - `service.BillingSession.preConsume(...)`
+  - `service.BillingSession.Settle(...)`
+  - `service.PostConsumeQuota(...)`
+  - `service/task_billing.go`
+- 推荐行为：
+  - `ValidateUserToken(...)`
+    - 新增“当前窗口已耗尽”的快速拒绝；
+    - 但最终是否允许本次请求继续，还要以预扣费阶段的精确额度判断为准。
+  - `PreConsumeTokenQuota(...)`
+    - 成为“进入上游前”的硬拦截点；
+    - 若本次预扣费会让 `QuotaUsedInPeriod + preConsumedQuota > QuotaLimit`，直接拒绝。
+  - `BillingSession.shouldTrust(...)`
+    - 对启用了周期额度的 token 禁用信任额度旁路；
+    - 否则会出现请求直接放行、结算时才发现超限的问题。
+  - `BillingSession.Settle(...)` / `PostConsumeQuota(...)`
+    - 差额补扣时同步增加 `QuotaUsedInPeriod`
+    - 差额返还时同步减少 `QuotaUsedInPeriod`
+  - `service/task_billing.go`
+    - 异步任务预扣、退款、差额重算都必须同步调整 `QuotaUsedInPeriod`
+
+#### 8.4.5 超限错误语义
+
+- 返回要求：
+  - 不继续转发到上游
+  - 返回明确错误提示
+  - 错误信息需要包含“当前 token 已达到每日/月度额度上限”以及“下次恢复时间”
+- 建议补充后端 i18n 文案：
+  - 中文
+  - 英文
+
+#### 8.4.6 管理端交互
+
+- 首版前端配置入口：
+  - `web/src/components/table/tokens/modals/EditTokenModal.jsx`
+  - `web/src/components/table/tokens/index.jsx`
+- 首版前端数据流：
+  - `web/src/hooks/tokens/useTokensData.jsx`
+- 首版前端只读展示：
+  - `web/src/components/table/tokens/TokensColumnDefs.jsx`
+- 首版交互：
+  - `EditTokenModal` 同时覆盖“添加令牌”的创建态和“编辑令牌”的编辑态
+  - **token 创建/编辑侧栏**新增：
+    - 周期额度模式：未启用 / 每日 / 每月
+    - 周期额度上限
+  - token 列表增加只读展示：
+    - 当前周期已用
+    - 下次重置时间
+- 不做：
+  - 不新增单独 token 周期额度页面
+  - 不在首版新增用户页的同类配置入口
+  - 不支持在用户管理页跨账号配置其他用户的 token
+  - 不把配置入口放到其他页面；配置动作以 token 管理页中的 `EditTokenModal` 为唯一入口
+
+### 8.5 实施计划
+
+### Task 9: 固化验收标准与建模边界
+
+**Files:**
+- Modify: `task_plan.md`
+- Review: `model/token.go`
+- Review: `service/quota.go`
+- Review: `service/billing_session.go`
+- Review: `service/task_billing.go`
+
+**Step 1: 固化首版范围**
+
+- 只支持 token 维度
+- 只支持 `none / daily / monthly`
+- 适用于普通用户与管理员管理自己的 token
+- 只在 token 管理页的 `EditTokenModal` 提供配置入口，覆盖创建态与编辑态
+
+**Step 2: 固化正确性要求**
+
+- 拦截必须发生在进入上游前
+- 新周期恢复不能依赖定时任务
+- 退款与差额结算必须回滚周期已用额度
+
+**Step 3: 固化非目标**
+
+- 不引入新的订阅计划字段
+- 不改用户总钱包/订阅结算口径
+- 不做用户页批量配置入口
+- 不做管理员在用户管理页跨账号配置他人 token 的入口
+
+### Task 10: 先写失败测试，覆盖重置、拦截、结算与回滚
+
+**Files:**
+- Create: `model/token_period_quota_test.go`
+- Modify: `controller/token_test.go`
+- Modify: `service/task_billing_test.go`
+- Create or Modify: `service/billing_session_test.go`
+
+**Step 1: 写模型测试**
+
+- `daily` 窗口滚动
+- `monthly` 窗口滚动
+- `none` 不启用
+- 超限判定
+
+**Step 2: 写 token CRUD 测试**
+
+- 创建 token 时可保存 `quota_period / quota_limit`
+- 更新 token 时可切换模式与重置窗口
+- 同一套 token CRUD 对普通用户与管理员自有 token 都成立
+- 非法值校验应失败
+
+**Step 3: 写结算链路测试**
+
+- 预扣费达到上限时立即拦截
+- 退款后 `QuotaUsedInPeriod` 回退
+- 差额补扣与差额返还都正确更新周期已用额度
+- 启用周期额度后，trust bypass 不得跳过预扣
+
+**Step 4: 写异步任务测试**
+
+- `RefundTaskQuota(...)` 回滚周期已用额度
+- `RecalculateTaskQuota(...)` 调整周期已用额度
+
+**Step 5: 跑最小测试集确认失败**
+
+Run:
+
+```powershell
+go test ./model ./controller ./service -run "Token.*Quota|BillingSession|TaskQuota"
+```
+
+### Task 11: 扩展 Token 模型、迁移与 CRUD
+
+**Files:**
+- Modify: `model/token.go`
+- Modify: `model/main.go`
+- Modify: `controller/token.go`
+- Modify: `constant/cache_key.go`
+- Modify: `model/token_cache.go`
+
+**Step 1: 扩展模型字段**
+
+- 为 `Token` 增加周期额度字段
+- 为 `Update()` 的字段白名单补齐新字段
+
+**Step 2: 迁移兼容三库**
+
+- 确认新增列在 SQLite / MySQL / PostgreSQL 下可自动迁移
+- 必要时在 `model/main.go` 增加显式补列逻辑
+
+**Step 3: 扩展 CRUD 校验**
+
+- `quota_period` 只能取允许值
+- `quota_limit` 不能为负
+- 关闭周期额度时应清理窗口状态
+
+### Task 12: 实现 token 周期窗口辅助逻辑
+
+**Files:**
+- Create: `model/token_period_quota.go`
+- Modify: `model/token.go`
+
+**Step 1: 实现周期标准化与下次重置时间计算**
+
+- 日级窗口按本地自然日
+- 月级窗口按自然月
+
+**Step 2: 实现懒重置**
+
+- 请求到来时发现已跨窗口则重置 `QuotaUsedInPeriod`
+- 同步更新 `QuotaLastResetTime / QuotaNextResetTime`
+
+**Step 3: 实现统一的周期额度 delta 调整入口**
+
+- 正向扣减
+- 返还回滚
+- 不允许 `QuotaUsedInPeriod` 变成负数
+
+### Task 13: 接入同步拦截与结算链路
+
+**Files:**
+- Modify: `middleware/auth.go`
+- Modify: `service/quota.go`
+- Modify: `service/billing.go`
+- Modify: `service/billing_session.go`
+- Modify: `service/task_billing.go`
+
+**Step 1: 接入快速拒绝**
+
+- 对已经达到当前窗口上限的 token 返回明确错误
+
+**Step 2: 接入预扣费硬拦截**
+
+- 在 `PreConsumeTokenQuota(...)` 中引入周期额度检查
+- 启用周期额度时关闭 trust bypass
+
+**Step 3: 接入差额结算与退款**
+
+- `Settle(...)` 与 `PostConsumeQuota(...)` 正确维护 `QuotaUsedInPeriod`
+- `RefundTaskQuota(...)` / `RecalculateTaskQuota(...)` 正确维护 `QuotaUsedInPeriod`
+
+**Step 4: 处理缓存与批量更新**
+
+- 启用周期额度的 token 走同步写路径
+- 变更后刷新完整 token 缓存
+
+### Task 14: token 管理页创建/编辑表单与展示
+
+**Files:**
+- Modify: `web/src/components/table/tokens/modals/EditTokenModal.jsx`
+- Modify: `web/src/hooks/tokens/useTokensData.jsx`
+- Modify: `web/src/components/table/tokens/TokensColumnDefs.jsx`
+- Modify: `web/src/components/table/tokens/TokensTable.jsx`
+
+**Step 1: 表单新增字段**
+
+- 在 `EditTokenModal` 的创建态新增周期额度模式
+- 在 `EditTokenModal` 的创建态新增周期额度上限
+- 在 `EditTokenModal` 的编辑态新增周期额度模式
+- 在 `EditTokenModal` 的编辑态新增周期额度上限
+
+**Step 2: 列表展示状态**
+
+- 当前周期已用额度
+- 下次重置时间
+
+**Step 3: 提交与回填**
+
+- 创建/更新 token 时传递新字段
+- 编辑已有 token 时正确回显
+- 创建新 token 时正确带入默认值并提交
+- 验证在 token 管理页“添加令牌”和“编辑令牌”两条入口都可以完成 daily / monthly 配置
+
+### Task 15: i18n、错误提示与全量验证
+
+**Files:**
+- Modify: `i18n/en.json`
+- Modify: `i18n/zh.json`
+- Modify: `web/src/i18n/locales/zh-CN.json`
+- Modify: `web/src/i18n/locales/en.json`
+- Modify: `web/src/i18n/locales/fr.json`
+- Modify: `web/src/i18n/locales/ja.json`
+- Modify: `web/src/i18n/locales/ru.json`
+- Modify: `web/src/i18n/locales/vi.json`
+- Modify: `web/src/i18n/locales/zh-TW.json`
+
+**Step 1: 补错误文案**
+
+- 当前 token 已达到每日额度上限
+- 当前 token 已达到月额度上限
+- 下次恢复时间
+
+**Step 2: 跑自动化验证**
+
+Run:
+
+```powershell
+go test ./...
+cd web
+bun run build
+```
+
+**Step 3: 跑手工验收**
+
+- 普通用户新建一个 `daily` token，验证当天达到上限后立即拦截
+- 调整时间或测试窗口，验证次日恢复
+- 管理员账号新建或编辑一个 `monthly` token，验证月级恢复
+- 验证退款与异步任务差额结算不会把周期已用额度算错
+
+### 8.6 关键风险
+
+- 最大技术风险不是字段新增，而是**现有 trust bypass / BatchUpdate / Redis remain_quota 增量缓存**与“立即拦截”目标存在天然冲突。
+- 如果不对启用周期额度的 token 走同步写路径，计划会在并发和缓存延迟下失真。
+- 现有预扣费是基于 `QuotaToPreConsume` 的估算值；若某些链路实际结算值高于预扣值，需要额外审计是否会出现单次请求轻微超出窗口上限的情况。
+
+### 8.7 已确认决策
+
+- 已确认采用方案 B：在 token 上持久化周期窗口状态，按请求链路懒重置并同步拦截
+- 已确认适用对象为令牌拥有者，普通用户和管理员都可以为自己的 token 配置周期额度
+- 已确认配置入口只放在 token 管理页的 `EditTokenModal`，并覆盖“添加令牌”和“编辑令牌”两种状态
+- 已确认首版只做 token 维度，不做用户维度
+- 已确认首版继续沿用现有 quota 单位，前端以“美元等值额度”解释
+
+---
+
+## 9. 数据看板第 1 / 第 2 个 Tab 14 天按天展示（追加计划）
+
+### 9.1 方案比较
+
+- 方案 A：继续走当前共享查询链路，把 Dashboard 全部图表默认时间窗统一切到 14 天，并在前端按天重聚合。
+  - 优点：实现路径最短。
+  - 缺点：会误伤第 3、第 4 个 tab 以及搜索弹窗后的共享图表逻辑，范围过大。
+- 方案 B：只为第 1、第 2 个 tab 新增专用“最近 14 天”数据加载和按天聚合逻辑，第 3、第 4 个 tab 继续沿用当前链路。
+  - 优点：最贴合你的新范围，改动集中，能把“前后几个小时”的问题限定在这两个 tab 内解决。
+  - 缺点：Dashboard 会多一条图表专用数据路径。
+- 方案 C：新增后端“最近 14 天按天聚合”的日报接口，前端第 1、第 2 个 tab 直接消费日报数据。
+  - 优点：接口语义清晰，后续可复用。
+  - 缺点：首版改动面偏大；当前 `/api/data/self` 与 `/api/data` 已能提供足够原始数据，没有必要先扩后端接口。
+
+### 9.2 推荐结论
+
+- 推荐采用 **方案 B**。
+- 本次范围调整为同时修改 Dashboard 的：
+  - 第 1 个 tab：`消耗分布 / 模型消耗分布`
+  - 第 2 个 tab：`消耗趋势 / 模型消耗趋势`
+- 两个 tab 都固定展示“最近 14 天，按天统计”，不再显示小时级刻度。
+- 第 1 个 tab 保持“按模型分组的日消耗分布”。
+- 第 2 个 tab 调整为“按模型分组的日消耗趋势”。
+- 第 3、第 4 个 tab：
+  - `调用次数分布`
+  - `调用次数排行`
+  暂不改行为。
+
+# 执行总览（Execution Overview）
+
+- **目标**：将 Dashboard 的第 1、第 2 个 tab 一并改为最近 14 天按天展示，解决当前只显示前后几个小时的问题。
+- **范围**：修改前端 Dashboard 的图表数据链路、图表装配逻辑与必要文案，复用现有 `/api/data/self`、`/api/data` 接口，不修改 `quota_data` 的小时级持久化粒度。
+- **核心策略**：
+  - 为第 1、第 2 个 tab 增加专用 14 天数据加载逻辑；
+  - 使用现有小时级 `quota_data` 结果，在前端二次按天聚合；
+  - 固定生成 14 个自然日时间点，缺失日期补零；
+  - 将第 2 个 tab 从当前“标题写消耗趋势、实现却按 count 画线”的状态收敛为真正的日消耗趋势；
+  - 第 3、第 4 个 tab 和搜索弹窗的共享逻辑保持不变。
+- **预期结果**：
+  - 第 1 个 tab 的 X 轴改为最近 14 天日期，按天展示模型消耗分布；
+  - 第 2 个 tab 的 X 轴同样改为最近 14 天日期，按天展示模型消耗趋势；
+  - 管理员和普通用户都能在各自 Dashboard 上看到连续 14 天的按天数据。
+
+### Task 16: 固化需求边界与验收口径
+
+**Files:**
+- Modify: `task_plan.md`
+- Review: `web/src/components/dashboard/ChartsPanel.jsx`
+- Review: `web/src/hooks/dashboard/useDashboardData.js`
+- Review: `web/src/hooks/dashboard/useDashboardCharts.jsx`
+- Review: `web/src/helpers/dashboard.jsx`
+
+**Step 1: 固化范围**
+
+- 同时修改第 1 个和第 2 个图表页签。
+- 两个 tab 都固定展示最近 14 天，不再显示小时级刻度。
+- 单位保持为现有 quota/美元等值额度，不改统计口径。
+
+**Step 2: 固化不改项**
+
+- 不修改 `quota_data` 表的写入粒度，仍保持小时级缓存与落库。
+- 不新增后端日报接口。
+- 不调整 `调用次数分布`、`调用次数排行` 两个 tab 的行为。
+- 不改变搜索弹窗现有交互作为首版前置条件。
+
+**Step 3: 固化验收标准**
+
+- 第 1、第 2 个 tab 的 X 轴都必须固定展示 14 个自然日。
+- 每个自然日都必须出现，即使当天无数据也要显示 0。
+- 第 1 个 tab 保持“按模型分组的堆叠分布”。
+- 第 2 个 tab 必须改为真正的“按日消耗趋势”，不再沿用当前按 count 组装却命名为“消耗趋势”的实现。
+
+### Task 17: 为第 1 / 第 2 个 Tab 增加专用最近 14 天数据加载链路
+
+**Files:**
+- Modify: `web/src/hooks/dashboard/useDashboardData.js`
+- Review: `controller/usedata.go`
+- Review: `router/api-router.go`
+
+**Step 1: 新增图表专用时间窗**
+
+- 在 Dashboard 数据层新增“最近 14 天”查询窗口生成逻辑：
+  - `end_timestamp` 取当前时刻向后补 1 小时的现有风格，避免当天尾部数据遗漏；
+  - `start_timestamp` 取最近 13 天的自然日起点，保证覆盖 14 个自然日。
+
+**Step 2: 新增专用加载函数**
+
+- 在 `useDashboardData.js` 中新增仅供第 1、第 2 个 tab 使用的数据请求函数，例如：
+  - `loadConsumptionChartsQuotaData`
+- 普通用户继续走：
+  - `/api/data/self`
+- 管理员继续走：
+  - `/api/data/?username=...`
+
+**Step 3: 保持共享链路不受影响**
+
+- `loadQuotaData` 继续服务当前搜索弹窗和第 3、第 4 个 tab。
+- Dashboard 初始化和顶部刷新按钮同时刷新：
+  - 共享图表数据
+  - 第 1、第 2 个 tab 的 14 天专用数据
+
+### Task 18: 新增“最近 14 天按天聚合”前端辅助函数
+
+**Files:**
+- Modify: `web/src/helpers/dashboard.jsx`
+
+**Step 1: 新增固定日期点生成函数**
+
+- 生成最近 14 个自然日日期标签；
+- 日期格式同年优先 `MM-DD`，跨年自动带年份；
+- 输出顺序固定为从旧到新。
+
+**Step 2: 新增按天聚合函数**
+
+- 基于现有 `quota_data` 小时级数据，在前端将同一天、同模型的数据累加到单个 bucket。
+- 聚合维度：
+  - `day`
+  - `model_name`
+- 统计字段：
+  - `quota`
+
+**Step 3: 新增补零逻辑**
+
+- 对 14 天内没有数据的日期补零。
+- 对某一天没有某个模型的数据，也要补出对应 `quota=0` 的图表点，避免第 1、第 2 个 tab 在时间轴上断层。
+
+### Task 19: 重构第 1 / 第 2 个 Tab 的图表组装逻辑
+
+**Files:**
+- Modify: `web/src/hooks/dashboard/useDashboardCharts.jsx`
+
+**Step 1: 将前两个图表与后两个图表的数据路径拆开**
+
+- 当前 `updateChartData` 会一次性驱动全部图表，并共用 `generateChartTimePoints`。
+- 需要把第 1、第 2 个 tab 的图表装配逻辑拆成独立路径，避免继续走当前“最多 7 个点、按小时/默认粒度”的通路。
+
+**Step 2: 生成第 1 个 tab 的 14 天分布数据**
+
+- 对“模型消耗分布”：
+  - X 轴使用固定 14 天日期；
+  - Y 轴使用每天各模型的 quota 总量；
+  - `seriesField` 继续使用 `Model`；
+  - tooltip 展示每日每模型额度值与总计。
+
+**Step 3: 生成第 2 个 tab 的 14 天趋势数据**
+
+- 对“模型消耗趋势”：
+  - X 轴使用固定 14 天日期；
+  - Y 轴改为每天各模型的 quota 总量；
+  - 折线图维持按模型分组；
+  - tooltip 展示每日每模型额度值与总计。
+
+**Step 4: 保持标题与总计语义一致**
+
+- 第 1 个 tab 标题仍为“模型消耗分布”。
+- 第 2 个 tab 标题仍为“模型消耗趋势”。
+- 两者的 `subtext` 都应与 quota 口径一致。
+
+### Task 20: 视图文案与空态优化
+
+**Files:**
+- Modify: `web/src/components/dashboard/ChartsPanel.jsx`
+- Modify: `web/src/i18n/locales/zh-CN.json`
+- Modify: `web/src/i18n/locales/en.json`
+- Modify: `web/src/i18n/locales/fr.json`
+- Modify: `web/src/i18n/locales/ja.json`
+- Modify: `web/src/i18n/locales/ru.json`
+- Modify: `web/src/i18n/locales/vi.json`
+- Modify: `web/src/i18n/locales/zh-TW.json`
+
+**Step 1: 补充必要文案**
+
+- 如需新增以下文案：
+  - `最近14天`
+  - `按天统计`
+  - `最近14天模型消耗分布`
+  - `最近14天模型消耗趋势`
+- 只在确实需要前端显示时新增，避免无意义 key 膨胀。
+
+**Step 2: 校正无数据场景**
+
+- 即使 14 天内无任何记录，第 1、第 2 个 tab 也应显示 14 天时间轴和零值图表，而不是退回“前后几个小时 + 无数据”。
+- 如图表库在全 0 数据下表现异常，再补统一空态兜底。
+
+### Task 21: 验证与回归
+
+**Files:**
+- Review: `web/src/hooks/dashboard/useDashboardData.js`
+- Review: `web/src/hooks/dashboard/useDashboardCharts.jsx`
+- Review: `web/src/helpers/dashboard.jsx`
+- Review: `web/src/components/dashboard/ChartsPanel.jsx`
+
+**Step 1: 自动化验证**
+
+Run:
+
+```powershell
+cd web
+bun run build
+```
+
+**Step 2: 手工验收**
+
+- 普通用户打开 `/console/dashboard`：
+  - 第 1 个 tab 显示最近 14 天日期；
+  - 第 2 个 tab 同样显示最近 14 天日期；
+  - 每天无数据时仍保留日期点；
+  - tooltip 中每日总消耗与模型拆分正确。
+- 管理员打开 Dashboard：
+  - 在默认态和指定 `username` 检索后，第 1、第 2 个 tab 都保持 14 天按天展示。
+- 顶部刷新按钮点击后：
+  - 前两个 tab 和其他卡片都正常刷新；
+  - 不出现 tab 切换错乱或旧数据残留。
+
+**Step 3: 回归检查**
+
+- `调用次数分布`、`调用次数排行` 不因本次改动被迫切换为 14 天固定模式。
+- 搜索弹窗仍可正常打开、关闭和触发共享数据刷新。
+- Dashboard 首屏性能无明显退化。
+
+### 9.3 关键风险
+
+- 当前 `quota_data` 是按小时落库，首版如果只做前端二次聚合，必须确保“按天累加”不会因时区或字符串格式化导致日期错位。
+- `generateChartTimePoints` 当前有 `MAX_TREND_POINTS = 7` 的隐式假设；如果不拆分前两个 tab 的数据路径，很容易继续被 7 个点限制。
+- 第 2 个 tab 当前标题为“模型消耗趋势”，但实现实际按 `count` 组装，这次改动需要显式纠正统计口径，否则会出现“名字改了、数据没改”的假修复。
+- Dashboard 当前一个 `updateChartData` 同时驱动多个图表；若拆分不彻底，容易把第 3、第 4 个 tab 也误改成日粒度。
+
+### 9.4 已确认决策
+
+- 已确认首版同时修改第 1 和第 2 个 tab。
+- 已确认两个 tab 的目标展示均为“最近 14 天、按天统计”。
+- 已确认第 1 个 tab 展示按模型分组的日消耗分布。
+- 已确认第 2 个 tab 展示按模型分组的日消耗趋势，并纠正当前按 count 组装的语义偏差。
+- 已确认优先复用现有 `/api/data/self`、`/api/data` 接口，不新增后端日报接口。
+- 已确认优先通过前端专用数据加载与日聚合实现，不修改 `quota_data` 的落库粒度。
