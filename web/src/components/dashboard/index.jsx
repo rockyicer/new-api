@@ -92,6 +92,7 @@ const Dashboard = () => {
         dashboardCharts.updateChartData(data);
       }
     });
+    await dashboardData.loadConsumptionChartsQuotaData();
     await dashboardData.loadUptimeData();
   };
 

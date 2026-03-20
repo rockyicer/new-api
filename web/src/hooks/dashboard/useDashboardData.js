@@ -22,6 +22,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { API, isAdmin, showError, timestamp2string } from '../../helpers';
 import { getDefaultTime, getInitialTimestamp } from '../../helpers/dashboard';
+import { buildRecentDayWindow } from '../../helpers/dashboard-chart-data';
 import { TIME_OPTIONS } from '../../constants/dashboard.constants';
 import { useIsMobile } from '../common/useIsMobile';
 import { useMinimumLoadingTime } from '../common/useMinimumLoadingTime';
@@ -54,6 +55,9 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
 
   // ========== 数据状态 ==========
   const [quotaData, setQuotaData] = useState([]);
+  const [consumptionChartsQuotaData, setConsumptionChartsQuotaData] = useState(
+    [],
+  );
   const [consumeQuota, setConsumeQuota] = useState(0);
   const [consumeTokens, setConsumeTokens] = useState(0);
   const [times, setTimes] = useState(0);
@@ -193,6 +197,31 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     }
   }, [inputs, dataExportDefaultTime, isAdminUser, now]);
 
+  const loadConsumptionChartsQuotaData = useCallback(async () => {
+    const { username } = inputs;
+    const dailyWindow = buildRecentDayWindow(now.getTime() / 1000 + 3600, 14);
+    const { startTimestamp, endTimestamp } = dailyWindow;
+
+    let url = '';
+    if (isAdminUser) {
+      url = `/api/data/?username=${username}&start_timestamp=${startTimestamp}&end_timestamp=${endTimestamp}&default_time=${dataExportDefaultTime}`;
+    } else {
+      url = `/api/data/self/?start_timestamp=${startTimestamp}&end_timestamp=${endTimestamp}&default_time=${dataExportDefaultTime}`;
+    }
+
+    const res = await API.get(url);
+    const { success, message, data } = res.data;
+    if (success) {
+      const nextData = Array.isArray(data) ? data : [];
+      nextData.sort((a, b) => a.created_at - b.created_at);
+      setConsumptionChartsQuotaData(nextData);
+      return nextData;
+    }
+
+    showError(message);
+    return [];
+  }, [inputs, dataExportDefaultTime, isAdminUser, now]);
+
   const loadUptimeData = useCallback(async () => {
     setUptimeLoading(true);
     try {
@@ -225,9 +254,10 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
 
   const refresh = useCallback(async () => {
     const data = await loadQuotaData();
+    await loadConsumptionChartsQuotaData();
     await loadUptimeData();
     return data;
-  }, [loadQuotaData, loadUptimeData]);
+  }, [loadQuotaData, loadConsumptionChartsQuotaData, loadUptimeData]);
 
   const handleSearchConfirm = useCallback(
     async (updateChartDataCallback) => {
@@ -267,6 +297,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
 
     // 数据状态
     quotaData,
+    consumptionChartsQuotaData,
     consumeQuota,
     setConsumeQuota,
     consumeTokens,
@@ -311,6 +342,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     showSearchModal,
     handleCloseModal,
     loadQuotaData,
+    loadConsumptionChartsQuotaData,
     loadUptimeData,
     getUserData,
     refresh,
