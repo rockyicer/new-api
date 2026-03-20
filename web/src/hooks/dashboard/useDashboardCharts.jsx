@@ -35,8 +35,14 @@ import {
   updateMapValue,
   initializeMaps,
 } from '../../helpers/dashboard';
+import {
+  aggregateQuotaDataByDayAndModel,
+  buildDailyQuotaBarSeries,
+  buildDailyQuotaLineSeries,
+} from '../../helpers/dashboard-chart-data';
 
 export const useDashboardCharts = (
+  consumptionChartsQuotaData,
   dataExportDefaultTime,
   setTrendData,
   setConsumeQuota,
@@ -189,7 +195,7 @@ export const useDashboardCharts = (
       },
     ],
     xField: 'Time',
-    yField: 'Count',
+    yField: 'Quota',
     seriesField: 'Model',
     legends: {
       visible: true,
@@ -205,9 +211,31 @@ export const useDashboardCharts = (
         content: [
           {
             key: (datum) => datum['Model'],
-            value: (datum) => renderNumber(datum['Count']),
+            value: (datum) => renderQuota(datum['Quota'] || 0, 4),
           },
         ],
+      },
+      dimension: {
+        content: [
+          {
+            key: (datum) => datum['Model'],
+            value: (datum) => datum['Quota'] || 0,
+          },
+        ],
+        updateContent: (array) => {
+          array.sort((a, b) => b.value - a.value);
+          const sum = array.reduce((total, item) => total + item.value, 0);
+          return [
+            {
+              key: t('总计'),
+              value: renderQuota(sum, 4),
+            },
+            ...array.map((item) => ({
+              ...item,
+              value: renderQuota(item.value, 4),
+            })),
+          ];
+        },
       },
     },
     color: {
@@ -270,6 +298,43 @@ export const useDashboardCharts = (
     });
     return newModelColors;
   }, []);
+
+  const updateConsumptionChartData = useCallback(
+    (data) => {
+      const endTimestamp = Math.floor(Date.now() / 1000);
+      const aggregatedData = aggregateQuotaDataByDayAndModel(data, endTimestamp);
+      const barSeries = buildDailyQuotaBarSeries(aggregatedData);
+      const lineSeries = buildDailyQuotaLineSeries(aggregatedData);
+      const uniqueModels = new Set(
+        aggregatedData.map((item) => item.Model).filter(Boolean),
+      );
+      const nextModelColors = generateModelColors(uniqueModels, {});
+      const totalQuota = aggregatedData.reduce(
+        (total, item) => total + item.rawQuota,
+        0,
+      );
+
+      updateChartSpec(
+        setSpecLine,
+        barSeries,
+        `${t('总计')}：${renderQuota(totalQuota, 2)}`,
+        nextModelColors,
+        'barData',
+      );
+
+      updateChartSpec(
+        setSpecModelLine,
+        lineSeries,
+        `${t('总计')}：${renderQuota(totalQuota, 2)}`,
+        nextModelColors,
+        'lineData',
+      );
+
+      setLineData(barSeries);
+      setModelColors(nextModelColors);
+    },
+    [generateModelColors, setLineData, setModelColors, t],
+  );
 
   const updateChartData = useCallback(
     (data) => {
@@ -433,6 +498,10 @@ export const useDashboardCharts = (
     });
   }, []);
 
+  useEffect(() => {
+    updateConsumptionChartData(consumptionChartsQuotaData);
+  }, [consumptionChartsQuotaData, updateConsumptionChartData]);
+
   return {
     // 图表规格
     spec_pie,
@@ -442,6 +511,7 @@ export const useDashboardCharts = (
 
     // 函数
     updateChartData,
+    updateConsumptionChartData,
     generateModelColors,
   };
 };

@@ -62,6 +62,7 @@ const Dashboard = () => {
 
   // ========== 图表管理 ==========
   const dashboardCharts = useDashboardCharts(
+    dashboardData.consumptionChartsQuotaData,
     dashboardData.dataExportDefaultTime,
     dashboardData.setTrendData,
     dashboardData.setConsumeQuota,
