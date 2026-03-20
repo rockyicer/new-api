@@ -35,6 +35,8 @@ const ChartsPanel = ({
   hasApiInfoPanel,
   t,
 }) => {
+  const showDailyHint = activeChartTab === '1' || activeChartTab === '2';
+
   return (
     <Card
       {...CARD_PROPS}
@@ -59,19 +61,29 @@ const ChartsPanel = ({
       }
       bodyStyle={{ padding: 0 }}
     >
-      <div className='h-96 p-2'>
-        {activeChartTab === '1' && (
-          <VChart spec={spec_line} option={CHART_CONFIG} />
+      <div className='h-96 p-2 flex flex-col'>
+        {showDailyHint && (
+          <div
+            className='px-2 pt-1 text-xs'
+            style={{ color: 'var(--semi-color-text-2)' }}
+          >
+            {t('最近14天')} · {t('按天统计')}
+          </div>
         )}
-        {activeChartTab === '2' && (
-          <VChart spec={spec_model_line} option={CHART_CONFIG} />
-        )}
-        {activeChartTab === '3' && (
-          <VChart spec={spec_pie} option={CHART_CONFIG} />
-        )}
-        {activeChartTab === '4' && (
-          <VChart spec={spec_rank_bar} option={CHART_CONFIG} />
-        )}
+        <div className='flex-1'>
+          {activeChartTab === '1' && (
+            <VChart spec={spec_line} option={CHART_CONFIG} />
+          )}
+          {activeChartTab === '2' && (
+            <VChart spec={spec_model_line} option={CHART_CONFIG} />
+          )}
+          {activeChartTab === '3' && (
+            <VChart spec={spec_pie} option={CHART_CONFIG} />
+          )}
+          {activeChartTab === '4' && (
+            <VChart spec={spec_rank_bar} option={CHART_CONFIG} />
+          )}
+        </div>
       </div>
     </Card>
   );
