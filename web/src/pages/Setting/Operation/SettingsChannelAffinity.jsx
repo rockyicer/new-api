@@ -103,6 +103,7 @@ const RULES_JSON_PLACEHOLDER = `[
     },
     "skip_retry_on_failure": false,
     "include_using_group": true,
+    "include_model_name": false,
     "include_rule_name": true
   }
 ]`;
@@ -276,6 +277,7 @@ export default function SettingsChannelAffinity(props) {
       ttl_seconds: Number(r.ttl_seconds || 0),
       skip_retry_on_failure: !!r.skip_retry_on_failure,
       include_using_group: r.include_using_group ?? true,
+      include_model_name: !!r.include_model_name,
       include_rule_name: r.include_rule_name ?? true,
       param_override_template_json: r.param_override_template
         ? stringifyPretty(r.param_override_template)
@@ -610,6 +612,7 @@ export default function SettingsChannelAffinity(props) {
       render: (_, record) => {
         const tags = [];
         if (record?.include_using_group) tags.push('分组');
+        if (record?.include_model_name) tags.push('模型');
         if (record?.include_rule_name) tags.push('规则');
         if (tags.length === 0) return '-';
         return tags.map((x) => (
@@ -678,6 +681,7 @@ export default function SettingsChannelAffinity(props) {
       ttl_seconds: 0,
       skip_retry_on_failure: false,
       include_using_group: true,
+      include_model_name: false,
       include_rule_name: true,
     };
     setEditingRule(nextRule);
@@ -1270,7 +1274,7 @@ export default function SettingsChannelAffinity(props) {
               </Row>
 
               <Row gutter={16}>
-                <Col xs={24} sm={12}>
+                <Col xs={24} sm={8}>
                   <Form.Switch
                     field='include_using_group'
                     label={t('作用域：包含分组')}
