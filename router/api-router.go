@@ -267,6 +267,19 @@ func SetApiRouter(router *gin.Engine) {
 			}
 		}
 
+		tokenPortalRoute := apiRouter.Group("/token-portal")
+		tokenPortalRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
+		{
+			tokenPortalRoute.POST("/login", controller.TokenPortalLogin)
+
+			protected := tokenPortalRoute.Group("/")
+			protected.Use(middleware.TokenPortalAuth())
+			{
+				protected.GET("/me", controller.GetTokenPortalSession)
+				protected.POST("/logout", controller.LogoutTokenPortal)
+			}
+		}
+
 		redemptionRoute := apiRouter.Group("/redemption")
 		redemptionRoute.Use(middleware.AdminAuth())
 		{
