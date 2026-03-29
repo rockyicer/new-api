@@ -59,6 +59,9 @@ func newTokenPortalLogRouter() *gin.Engine {
 			protected.GET("/log", GetTokenPortalLogs)
 			protected.GET("/log/stat", GetTokenPortalLogsStat)
 			protected.GET("/log/export", ExportTokenPortalLogsCSV)
+			protected.GET("/usage-records", GetTokenPortalLogs)
+			protected.GET("/usage-summary", GetTokenPortalLogsStat)
+			protected.GET("/usage-records/export", ExportTokenPortalLogsCSV)
 		}
 	}
 
@@ -250,4 +253,74 @@ func TestTokenPortalLogsExport_ExportsOnlyCurrentTokenLogs(t *testing.T) {
 	}, normalizeCSVHeader(records[0]))
 	assert.Equal(t, "req-export-202", records[1][9])
 	assert.Equal(t, "/v1/responses", records[1][4])
+}
+
+func TestTokenPortalUsageAliasEndpoints_ReturnBoundTokenData(t *testing.T) {
+	db := setupTokenPortalTestDB(t)
+	router := newTokenPortalLogRouter()
+
+	user := seedTokenPortalUser(t, db, 1, "student-owner", common.UserStatusEnabled)
+	otherToken := seedTokenPortalToken(t, db, user.Id, "stu_shared", "portalalias101")
+	targetToken := seedTokenPortalToken(t, db, user.Id, "stu_shared", "portalalias202")
+	now := time.Now().Unix()
+
+	seedExportLog(t, db, &model.Log{
+		UserId:           user.Id,
+		Username:         user.Username,
+		TokenId:          otherToken.Id,
+		TokenName:        "stu_shared",
+		CreatedAt:        now,
+		Type:             model.LogTypeConsume,
+		ModelName:        "gpt-4o-mini",
+		RequestId:        "req-alias-101",
+		RequestPath:      "/v1/chat/completions",
+		Quota:            91,
+		PromptTokens:     9,
+		CompletionTokens: 1,
+	})
+	seedExportLog(t, db, &model.Log{
+		UserId:           user.Id,
+		Username:         user.Username,
+		TokenId:          targetToken.Id,
+		TokenName:        "stu_shared",
+		CreatedAt:        now,
+		Type:             model.LogTypeConsume,
+		ModelName:        "gpt-4o-mini",
+		RequestId:        "req-alias-202",
+		RequestPath:      "/v1/chat/completions",
+		Quota:            32,
+		PromptTokens:     12,
+		CompletionTokens: 20,
+	})
+
+	loginRecorder := performTokenPortalRequest(t, router, http.MethodPost, "/api/token-portal/login", map[string]any{
+		"api_key": "sk-" + targetToken.Key,
+	}, nil)
+	loginCookies := loginRecorder.Result().Cookies()
+
+	listRecorder := performTokenPortalRequest(t, router, http.MethodGet, "/api/token-portal/usage-records?p=1&page_size=10&request_path=/v1/chat/completions", nil, loginCookies)
+	require.Equal(t, http.StatusOK, listRecorder.Code)
+	listResponse := decodeTokenPortalLogListResponse(t, listRecorder)
+	require.True(t, listResponse.Success)
+	require.Len(t, listResponse.Data.Items, 1)
+	assert.Equal(t, targetToken.Id, listResponse.Data.Items[0].TokenId)
+	assert.Equal(t, "req-alias-202", listResponse.Data.Items[0].RequestId)
+
+	statRecorder := performTokenPortalRequest(t, router, http.MethodGet, "/api/token-portal/usage-summary?start_timestamp=1&end_timestamp=9999999999", nil, loginCookies)
+	require.Equal(t, http.StatusOK, statRecorder.Code)
+	statResponse := decodeTokenPortalStatResponse(t, statRecorder)
+	require.True(t, statResponse.Success)
+	assert.Equal(t, 32, statResponse.Data.Quota)
+	assert.Equal(t, 1, statResponse.Data.Rpm)
+	assert.Equal(t, 32, statResponse.Data.Tpm)
+
+	exportRecorder := performTokenPortalRequest(t, router, http.MethodGet, "/api/token-portal/usage-records/export?start_timestamp=1&end_timestamp=9999999999", nil, loginCookies)
+	require.Equal(t, http.StatusOK, exportRecorder.Code)
+	assert.Contains(t, exportRecorder.Header().Get("Content-Type"), "text/csv")
+
+	reader := csv.NewReader(strings.NewReader(exportRecorder.Body.String()))
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+	require.Len(t, records, 2)
+	assert.Equal(t, "req-alias-202", records[1][9])
 }
