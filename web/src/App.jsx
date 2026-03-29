@@ -24,6 +24,7 @@ import User from './pages/User';
 import { AuthRedirect, PrivateRoute, AdminRoute } from './helpers';
 import RegisterForm from './components/auth/RegisterForm';
 import LoginForm from './components/auth/LoginForm';
+import TokenPortalLoginForm from './components/auth/TokenPortalLoginForm';
 import NotFound from './pages/NotFound';
 import Forbidden from './pages/Forbidden';
 import Setting from './pages/Setting';
@@ -186,6 +187,14 @@ function App() {
               <AuthRedirect>
                 <LoginForm />
               </AuthRedirect>
+            </Suspense>
+          }
+        />
+        <Route
+          path='/token-portal/login'
+          element={
+            <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+              <TokenPortalLoginForm />
             </Suspense>
           }
         />

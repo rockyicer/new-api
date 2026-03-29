@@ -709,6 +709,15 @@ const LoginForm = () => {
                   </Text>
                 </div>
               )}
+
+              <div className='mt-3 text-center text-sm'>
+                <Link
+                  to='/token-portal/login'
+                  className='text-blue-600 hover:text-blue-800 font-medium'
+                >
+                  {t('API 用量查询')}
+                </Link>
+              </div>
             </div>
           </Card>
         </div>
@@ -862,6 +871,15 @@ const LoginForm = () => {
                   </Text>
                 </div>
               )}
+
+              <div className='mt-3 text-center text-sm'>
+                <Link
+                  to='/token-portal/login'
+                  className='text-blue-600 hover:text-blue-800 font-medium'
+                >
+                  {t('API 用量查询')}
+                </Link>
+              </div>
             </div>
           </Card>
         </div>

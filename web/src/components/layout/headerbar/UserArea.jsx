@@ -170,6 +170,17 @@ const UserArea = ({
 
     return (
       <div className='flex items-center'>
+        <Link to='/token-portal/login' className='flex mr-2'>
+          <Button
+            theme='outline'
+            type='tertiary'
+            className='!rounded-full !py-[10px] !px-3 border border-gray-200 dark:border-gray-600'
+          >
+            <span className='!text-xs !text-semi-color-text-1 dark:!text-gray-300'>
+              {t('API 用量查询')}
+            </span>
+          </Button>
+        </Link>
         <Link to='/login' className='flex'>
           <Button
             theme='borderless'
