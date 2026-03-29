@@ -3854,6 +3854,14 @@
     "额度时间范围内上限必须大于 0": "The quota cap within the time range must be greater than 0",
     "当前周期已用额度": "Used in current period",
     "下次重置时间": "Next reset time",
+    "API 用量查询": "Tra cứu mức sử dụng API",
+    "输入 API 密钥": "Nhập khóa API",
+    "查询会话已过期": "Phiên tra cứu đã hết hạn",
+    "退出查询": "Thoát tra cứu",
+    "返回普通登录": "Quay lại đăng nhập thường",
+    "API 密钥无效": "Khóa API không hợp lệ",
+    "请输入 API 密钥": "Vui lòng nhập khóa API",
+    "只需输入一次完整的 API 密钥，后续查询将使用只读会话。": "Chỉ cần nhập khóa API đầy đủ một lần, các lần tra cứu sau sẽ dùng phiên chỉ đọc.",
     "未启用": "Disabled"
   }
 }

@@ -3340,6 +3340,14 @@
     "额度时间范围内上限必须大于 0": "The quota cap within the time range must be greater than 0",
     "当前周期已用额度": "Used in current period",
     "下次重置时间": "Next reset time",
+    "API 用量查询": "API Usage Lookup",
+    "输入 API 密钥": "Enter API Key",
+    "查询会话已过期": "Usage lookup session has expired",
+    "退出查询": "Exit Lookup",
+    "返回普通登录": "Back to Regular Login",
+    "API 密钥无效": "Invalid API Key",
+    "请输入 API 密钥": "Please enter the API key",
+    "只需输入一次完整的 API 密钥，后续查询将使用只读会话。": "Enter the full API key once. Subsequent lookups will use a read-only session.",
     "未启用": "Disabled"
   }
 }

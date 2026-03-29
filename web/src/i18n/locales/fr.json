@@ -3303,6 +3303,14 @@
     "额度时间范围内上限必须大于 0": "The quota cap within the time range must be greater than 0",
     "当前周期已用额度": "Used in current period",
     "下次重置时间": "Next reset time",
+    "API 用量查询": "Consulter l'usage API",
+    "输入 API 密钥": "Saisir la clé API",
+    "查询会话已过期": "La session de consultation a expiré",
+    "退出查询": "Quitter la consultation",
+    "返回普通登录": "Retour à la connexion classique",
+    "API 密钥无效": "Clé API invalide",
+    "请输入 API 密钥": "Veuillez saisir la clé API",
+    "只需输入一次完整的 API 密钥，后续查询将使用只读会话。": "Saisissez la clé API complète une seule fois. Les consultations suivantes utiliseront une session en lecture seule.",
     "未启用": "Disabled"
   }
 }
