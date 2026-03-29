@@ -36,7 +36,7 @@ export let API = axios.create({
   },
 });
 
-function patchAPIInstance(instance) {
+export function patchAPIInstance(instance) {
   const originalGet = instance.get.bind(instance);
   const inFlightGetRequests = new Map();
 
