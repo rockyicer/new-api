@@ -32,6 +32,7 @@ const TokenPortalLoginForm = () => {
   const { t } = useTranslation();
   const [apiKey, setApiKey] = useState('');
   const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const logo = getLogo();
   const systemName = getSystemName();
 
@@ -40,6 +41,37 @@ const TokenPortalLoginForm = () => {
       showError(t('查询会话已过期'));
     }
   }, [searchParams, t]);
+
+  useEffect(() => {
+    let active = true;
+
+    const syncPortalSession = async () => {
+      try {
+        const res = await TokenPortalAPI.get('/api/token-portal/me', {
+          skipErrorHandler: true,
+        });
+        if (!active) {
+          return;
+        }
+        if (res.data?.success) {
+          navigate('/token-portal/log', { replace: true });
+          return;
+        }
+      } catch {
+        // Ignore unauthenticated checks and allow manual portal login.
+      } finally {
+        if (active) {
+          setCheckingSession(false);
+        }
+      }
+    };
+
+    syncPortalSession();
+
+    return () => {
+      active = false;
+    };
+  }, [navigate]);
 
   const handleSubmit = async () => {
     if (!apiKey.trim()) {
@@ -63,7 +95,7 @@ const TokenPortalLoginForm = () => {
         showError(message || t('API 密钥无效'));
         return;
       }
-      navigate('/token-portal/log');
+      navigate('/token-portal/log', { replace: true });
     } catch (error) {
       const message = error?.response?.data?.message;
       showError(message || t('API 密钥无效'));
@@ -112,7 +144,7 @@ const TokenPortalLoginForm = () => {
                   theme='solid'
                   type='primary'
                   className='w-full !rounded-full'
-                  loading={loading}
+                  loading={loading || checkingSession}
                   onClick={handleSubmit}
                 >
                   {t('查询')}

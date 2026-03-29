@@ -33,6 +33,47 @@ type tokenPortalUserDTO struct {
 	MaskedKey string `json:"masked_key"`
 }
 
+type tokenPortalContextResponse struct {
+	Success bool                  `json:"success"`
+	Message string                `json:"message"`
+	Data    tokenPortalContextDTO `json:"data"`
+}
+
+type tokenPortalContextDTO struct {
+	UserID     int  `json:"user_id"`
+	TokenID    int  `json:"token_id"`
+	PortalMode bool `json:"portal_mode"`
+}
+
+type tokenPortalSessionStateResponse struct {
+	Success bool                       `json:"success"`
+	Message string                     `json:"message"`
+	Data    tokenPortalSessionStateDTO `json:"data"`
+}
+
+type tokenPortalSessionStateDTO struct {
+	DashboardUserID   int    `json:"dashboard_user_id"`
+	DashboardUsername string `json:"dashboard_username"`
+	DashboardRole     int    `json:"dashboard_role"`
+	DashboardStatus   int    `json:"dashboard_status"`
+	HasPortalTokenID  bool   `json:"has_portal_token_id"`
+	HasPortalUserID   bool   `json:"has_portal_user_id"`
+	PortalTokenName   string `json:"portal_token_name"`
+}
+
+func sessionValueInt(value any) int {
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int64:
+		return int(typed)
+	case float64:
+		return int(typed)
+	default:
+		return 0
+	}
+}
+
 func setupTokenPortalTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -101,6 +142,42 @@ func newTokenPortalRouter() *gin.Engine {
 	store := cookie.NewStore([]byte("token-portal-test"))
 	router.Use(sessions.Sessions("new-api-test", store))
 
+	router.POST("/test/session/dashboard-login", func(c *gin.Context) {
+		session := sessions.Default(c)
+		session.Set("username", "dashboard-user")
+		session.Set("role", common.RoleCommonUser)
+		session.Set("id", 777)
+		session.Set("status", common.UserStatusEnabled)
+		session.Set("group", "default")
+		if err := session.Save(); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+		common.ApiSuccess(c, nil)
+	})
+
+	router.GET("/test/session/state", func(c *gin.Context) {
+		session := sessions.Default(c)
+		username, _ := session.Get("username").(string)
+		role := sessionValueInt(session.Get("role"))
+		userID := sessionValueInt(session.Get("id"))
+		status := sessionValueInt(session.Get("status"))
+		portalTokenName, _ := session.Get("token_portal_token_name").(string)
+
+		common.ApiSuccess(c, gin.H{
+			"dashboard_user_id":   userID,
+			"dashboard_username":  username,
+			"dashboard_role":      role,
+			"dashboard_status":    status,
+			"has_portal_token_id": session.Get("token_portal_token_id") != nil,
+			"has_portal_user_id":  session.Get("token_portal_user_id") != nil,
+			"portal_token_name":   portalTokenName,
+		})
+	})
+
 	portalRoute := router.Group("/api/token-portal")
 	{
 		portalRoute.POST("/login", TokenPortalLogin)
@@ -109,6 +186,13 @@ func newTokenPortalRouter() *gin.Engine {
 		{
 			protected.GET("/me", GetTokenPortalSession)
 			protected.POST("/logout", LogoutTokenPortal)
+			protected.GET("/debug-context", func(c *gin.Context) {
+				common.ApiSuccess(c, gin.H{
+					"user_id":     c.GetInt("id"),
+					"token_id":    c.GetInt("token_id"),
+					"portal_mode": c.GetBool("portal_mode"),
+				})
+			})
 		}
 	}
 
@@ -144,6 +228,22 @@ func decodeTokenPortalAPIResponse(t *testing.T, recorder *httptest.ResponseRecor
 	t.Helper()
 
 	var response tokenPortalAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	return response
+}
+
+func decodeTokenPortalContextResponse(t *testing.T, recorder *httptest.ResponseRecorder) tokenPortalContextResponse {
+	t.Helper()
+
+	var response tokenPortalContextResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	return response
+}
+
+func decodeTokenPortalSessionStateResponse(t *testing.T, recorder *httptest.ResponseRecorder) tokenPortalSessionStateResponse {
+	t.Helper()
+
+	var response tokenPortalSessionStateResponse
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	return response
 }
@@ -253,4 +353,96 @@ func TestTokenPortalLogout_ClearsPortalSession(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, meRecorder.Code)
 	meResponse := decodeTokenPortalAPIResponse(t, meRecorder)
 	assert.False(t, meResponse.Success)
+}
+
+func TestTokenPortalAuth_SetsPortalContext(t *testing.T) {
+	db := setupTokenPortalTestDB(t)
+	router := newTokenPortalRouter()
+
+	user := seedTokenPortalUser(t, db, 1, "student-owner", common.UserStatusEnabled)
+	token := seedTokenPortalToken(t, db, user.Id, "stu_adam", "portalcontexttoken1234")
+
+	loginRecorder := performTokenPortalRequest(t, router, http.MethodPost, "/api/token-portal/login", map[string]any{
+		"api_key": "sk-" + token.Key,
+	}, nil)
+
+	contextRecorder := performTokenPortalRequest(t, router, http.MethodGet, "/api/token-portal/debug-context", nil, loginRecorder.Result().Cookies())
+
+	require.Equal(t, http.StatusOK, contextRecorder.Code)
+	response := decodeTokenPortalContextResponse(t, contextRecorder)
+	require.True(t, response.Success)
+	assert.Equal(t, user.Id, response.Data.UserID)
+	assert.Equal(t, token.Id, response.Data.TokenID)
+	assert.True(t, response.Data.PortalMode)
+}
+
+func TestTokenPortalLogout_PreservesDashboardSession(t *testing.T) {
+	db := setupTokenPortalTestDB(t)
+	router := newTokenPortalRouter()
+
+	user := seedTokenPortalUser(t, db, 1, "student-owner", common.UserStatusEnabled)
+	token := seedTokenPortalToken(t, db, user.Id, "stu_adam", "portalcoexisttoken1234")
+
+	dashboardLoginRecorder := performTokenPortalRequest(
+		t,
+		router,
+		http.MethodPost,
+		"/test/session/dashboard-login",
+		nil,
+		nil,
+	)
+	require.Equal(t, http.StatusOK, dashboardLoginRecorder.Code)
+
+	portalLoginRecorder := performTokenPortalRequest(t, router, http.MethodPost, "/api/token-portal/login", map[string]any{
+		"api_key": "sk-" + token.Key,
+	}, dashboardLoginRecorder.Result().Cookies())
+	require.Equal(t, http.StatusOK, portalLoginRecorder.Code)
+
+	stateBeforeLogoutRecorder := performTokenPortalRequest(
+		t,
+		router,
+		http.MethodGet,
+		"/test/session/state",
+		nil,
+		portalLoginRecorder.Result().Cookies(),
+	)
+	require.Equal(t, http.StatusOK, stateBeforeLogoutRecorder.Code)
+	stateBeforeLogout := decodeTokenPortalSessionStateResponse(t, stateBeforeLogoutRecorder)
+	require.True(t, stateBeforeLogout.Success)
+	assert.Equal(t, 777, stateBeforeLogout.Data.DashboardUserID)
+	assert.Equal(t, "dashboard-user", stateBeforeLogout.Data.DashboardUsername)
+	assert.Equal(t, common.RoleCommonUser, stateBeforeLogout.Data.DashboardRole)
+	assert.Equal(t, common.UserStatusEnabled, stateBeforeLogout.Data.DashboardStatus)
+	assert.True(t, stateBeforeLogout.Data.HasPortalTokenID)
+	assert.True(t, stateBeforeLogout.Data.HasPortalUserID)
+	assert.Equal(t, token.Name, stateBeforeLogout.Data.PortalTokenName)
+
+	logoutRecorder := performTokenPortalRequest(
+		t,
+		router,
+		http.MethodPost,
+		"/api/token-portal/logout",
+		nil,
+		portalLoginRecorder.Result().Cookies(),
+	)
+	require.Equal(t, http.StatusOK, logoutRecorder.Code)
+
+	stateAfterLogoutRecorder := performTokenPortalRequest(
+		t,
+		router,
+		http.MethodGet,
+		"/test/session/state",
+		nil,
+		logoutRecorder.Result().Cookies(),
+	)
+	require.Equal(t, http.StatusOK, stateAfterLogoutRecorder.Code)
+	stateAfterLogout := decodeTokenPortalSessionStateResponse(t, stateAfterLogoutRecorder)
+	require.True(t, stateAfterLogout.Success)
+	assert.Equal(t, 777, stateAfterLogout.Data.DashboardUserID)
+	assert.Equal(t, "dashboard-user", stateAfterLogout.Data.DashboardUsername)
+	assert.Equal(t, common.RoleCommonUser, stateAfterLogout.Data.DashboardRole)
+	assert.Equal(t, common.UserStatusEnabled, stateAfterLogout.Data.DashboardStatus)
+	assert.False(t, stateAfterLogout.Data.HasPortalTokenID)
+	assert.False(t, stateAfterLogout.Data.HasPortalUserID)
+	assert.Empty(t, stateAfterLogout.Data.PortalTokenName)
 }

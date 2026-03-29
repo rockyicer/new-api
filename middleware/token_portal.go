@@ -106,6 +106,7 @@ func TokenPortalAuth() func(c *gin.Context) {
 		c.Set("token_id", token.Id)
 		c.Set("token_name", token.Name)
 		c.Set("token_portal_token", token)
+		c.Set("portal_mode", true)
 		c.Next()
 	}
 }
