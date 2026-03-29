@@ -45,6 +45,9 @@ import ParamOverrideEntry from '../../components/table/usage-logs/components/Par
 export const useLogsData = ({ mode = 'user', portalSession = null } = {}) => {
   const { t } = useTranslation();
   const isTokenPortal = mode === 'tokenPortal';
+  const tokenPortalListEndpoint = '/api/token-portal/usage-records';
+  const tokenPortalStatEndpoint = '/api/token-portal/usage-summary';
+  const tokenPortalExportEndpoint = '/api/token-portal/usage-records/export';
 
   // Define column keys for selection
   const COLUMN_KEYS = {
@@ -357,7 +360,7 @@ export const useLogsData = ({ mode = 'user', portalSession = null } = {}) => {
     const query = buildQueryString(
       buildLogQueryParams({ includeAdminFields: false }),
     );
-    const url = `/api/token-portal/log/stat?${query}`;
+    const url = `${tokenPortalStatEndpoint}?${query}`;
     const res = await TokenPortalAPI.get(url);
     const { success, message, data } = res.data;
     if (success) {
@@ -398,15 +401,20 @@ export const useLogsData = ({ mode = 'user', portalSession = null } = {}) => {
       return;
     }
     setLoadingStat(true);
-    if (isTokenPortal) {
-      await getTokenPortalLogStat();
-    } else if (isAdminUser) {
-      await getLogStat();
-    } else {
-      await getLogSelfStat();
+    try {
+      if (isTokenPortal) {
+        await getTokenPortalLogStat();
+      } else if (isAdminUser) {
+        await getLogStat();
+      } else {
+        await getLogSelfStat();
+      }
+    } catch {
+      // Global interceptors already surface request failures.
+    } finally {
+      setShowStat(true);
+      setLoadingStat(false);
     }
-    setShowStat(true);
-    setLoadingStat(false);
   };
 
   // User info function
@@ -781,35 +789,40 @@ export const useLogsData = ({ mode = 'user', portalSession = null } = {}) => {
   const loadLogs = async (startIdx, pageSize, customLogType = null) => {
     setLoading(true);
 
-    let url = '';
-    const apiClient = isTokenPortal ? TokenPortalAPI : API;
-    const query = buildQueryString(
-      buildLogQueryParams({
-        customLogType,
-        page: startIdx,
-        size: pageSize,
-      }),
-    );
-    if (isAdminUser) {
-      url = `/api/log/?${query}`;
-    } else if (isTokenPortal) {
-      url = `/api/token-portal/log?${query}`;
-    } else {
-      url = `/api/log/self/?${query}`;
-    }
-    const res = await apiClient.get(url);
-    const { success, message, data } = res.data;
-    if (success) {
-      const newPageData = data.items;
-      setActivePage(data.page);
-      setPageSize(data.page_size);
-      setLogCount(data.total);
+    try {
+      let url = '';
+      const apiClient = isTokenPortal ? TokenPortalAPI : API;
+      const query = buildQueryString(
+        buildLogQueryParams({
+          customLogType,
+          page: startIdx,
+          size: pageSize,
+        }),
+      );
+      if (isAdminUser) {
+        url = `/api/log/?${query}`;
+      } else if (isTokenPortal) {
+        url = `${tokenPortalListEndpoint}?${query}`;
+      } else {
+        url = `/api/log/self/?${query}`;
+      }
+      const res = await apiClient.get(url);
+      const { success, message, data } = res.data;
+      if (success) {
+        const newPageData = data.items;
+        setActivePage(data.page);
+        setPageSize(data.page_size);
+        setLogCount(data.total);
 
-      setLogsFormat(newPageData);
-    } else {
-      showError(message);
+        setLogsFormat(newPageData);
+      } else {
+        showError(message);
+      }
+    } catch {
+      // Global interceptors already surface request failures.
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   // Page handlers
@@ -850,7 +863,7 @@ export const useLogsData = ({ mode = 'user', portalSession = null } = {}) => {
       const exportUrl = isAdminUser
         ? '/api/log/export'
         : isTokenPortal
-          ? '/api/token-portal/log/export'
+          ? tokenPortalExportEndpoint
           : '/api/log/self/export';
       const response = await apiClient.get(`${exportUrl}?${query}`, {
         responseType: 'blob',
