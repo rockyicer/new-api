@@ -352,21 +352,29 @@ const renderPeriodQuota = (record, t) => {
     <Popover content={popoverContent} position='top'>
       <Tag color='white' shape='circle'>
         <div
-          className='flex flex-col items-start'
-          style={{ minWidth: 160, rowGap: 4 }}
+          className='relative flex items-center justify-center'
+          style={{ minWidth: 160, minHeight: 28, padding: '2px 0 4px' }}
         >
           <span
             className='text-xs font-medium'
-            style={{ lineHeight: '16px', whiteSpace: 'nowrap' }}
+            style={{ lineHeight: '18px', whiteSpace: 'nowrap' }}
           >
-            {periodLabel} · {renderQuota(used)} / {renderQuota(limit)}
+            {periodLabel}: {renderQuota(used)} / {renderQuota(limit)}
           </span>
           <Progress
             percent={percent}
             stroke={getProgressColor(100 - percent)}
+            showInfo={false}
             aria-label='period quota usage'
-            format={() => `${percent.toFixed(0)}%`}
-            style={{ width: '100%', marginTop: 0, marginBottom: 0 }}
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              width: '100%',
+              marginTop: 0,
+              marginBottom: 0,
+            }}
           />
         </div>
       </Tag>
@@ -543,6 +551,9 @@ export const getTokensColumns = ({
       title: t('额度时间范围'),
       key: 'period_quota',
       width: 190,
+      onCell: () => ({
+        style: { verticalAlign: 'middle' },
+      }),
       render: (text, record) => renderPeriodQuota(record, t),
     },
     {
