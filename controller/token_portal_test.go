@@ -49,7 +49,7 @@ func setupTokenPortalTestDB(t *testing.T) *gorm.DB {
 	model.DB = db
 	model.LOG_DB = db
 
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.Log{}))
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()

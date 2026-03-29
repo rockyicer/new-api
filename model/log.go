@@ -553,6 +553,39 @@ type Stat struct {
 	Tpm   int `json:"tpm"`
 }
 
+func SumUsedQuotaByFilter(filters LogFilter) (stat Stat, err error) {
+	quotaFilters := filters
+	quotaFilters.LogType = LogTypeConsume
+
+	quotaQuery, err := applyLogFilters(
+		LOG_DB.Table("logs").Select("coalesce(sum(quota), 0) quota"),
+		quotaFilters,
+	)
+	if err != nil {
+		return stat, err
+	}
+
+	rpmTpmQuery, err := applyLogFilters(
+		LOG_DB.Table("logs").Select("count(*) rpm, coalesce(sum(prompt_tokens), 0) + coalesce(sum(completion_tokens), 0) tpm"),
+		quotaFilters,
+	)
+	if err != nil {
+		return stat, err
+	}
+	rpmTpmQuery = rpmTpmQuery.Where("logs.created_at >= ?", time.Now().Add(-60*time.Second).Unix())
+
+	if err := quotaQuery.Scan(&stat).Error; err != nil {
+		common.SysError("failed to query log stat: " + err.Error())
+		return stat, errors.New("查询统计数据失败")
+	}
+	if err := rpmTpmQuery.Scan(&stat).Error; err != nil {
+		common.SysError("failed to query rpm/tpm stat: " + err.Error())
+		return stat, errors.New("查询统计数据失败")
+	}
+
+	return stat, nil
+}
+
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("sum(quota) quota")
 

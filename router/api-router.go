@@ -277,6 +277,9 @@ func SetApiRouter(router *gin.Engine) {
 			{
 				protected.GET("/me", controller.GetTokenPortalSession)
 				protected.POST("/logout", controller.LogoutTokenPortal)
+				protected.GET("/log", controller.GetTokenPortalLogs)
+				protected.GET("/log/stat", controller.GetTokenPortalLogsStat)
+				protected.GET("/log/export", controller.ExportTokenPortalLogsCSV)
 			}
 		}
 

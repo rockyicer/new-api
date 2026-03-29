@@ -36,6 +36,20 @@ func parseAdminLogFilter(c *gin.Context) model.LogFilter {
 	return filters
 }
 
+func parseTokenPortalLogFilter(c *gin.Context) model.LogFilter {
+	logType, _ := strconv.Atoi(c.Query("type"))
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	return model.LogFilter{
+		LogType:        logType,
+		StartTimestamp: startTimestamp,
+		EndTimestamp:   endTimestamp,
+		ModelName:      c.Query("model_name"),
+		RequestID:      c.Query("request_id"),
+		RequestPath:    c.Query("request_path"),
+	}
+}
+
 func writeLogsCSV(c *gin.Context, logs []*model.Log, includeChannel bool) {
 	header := []string{
 		"used_at",
@@ -182,6 +196,62 @@ func GetLogByKey(c *gin.Context) {
 		"message": "",
 		"data":    logs,
 	})
+}
+
+func GetTokenPortalLogs(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	userID := c.GetInt("id")
+	tokenID := c.GetInt("token_id")
+	filters := parseTokenPortalLogFilter(c)
+	filters.UserID = &userID
+	filters.TokenID = &tokenID
+
+	logs, total, err := model.GetUserLogsByFilter(filters, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(logs)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func GetTokenPortalLogsStat(c *gin.Context) {
+	userID := c.GetInt("id")
+	tokenID := c.GetInt("token_id")
+	filters := parseTokenPortalLogFilter(c)
+	filters.UserID = &userID
+	filters.TokenID = &tokenID
+
+	stat, err := model.SumUsedQuotaByFilter(filters)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"quota": stat.Quota,
+			"rpm":   stat.Rpm,
+			"tpm":   stat.Tpm,
+		},
+	})
+}
+
+func ExportTokenPortalLogsCSV(c *gin.Context) {
+	userID := c.GetInt("id")
+	tokenID := c.GetInt("token_id")
+	filters := parseTokenPortalLogFilter(c)
+	filters.UserID = &userID
+	filters.TokenID = &tokenID
+
+	logs, err := model.GetUserLogsForExport(filters)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	writeLogsCSV(c, logs, false)
 }
 
 func GetLogsStat(c *gin.Context) {
