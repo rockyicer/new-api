@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next';
 import { Modal } from '@douyinfe/semi-ui';
 import {
   API,
+  TokenPortalAPI,
   getTodayStartTimestamp,
   isAdmin,
   showError,
@@ -41,8 +42,9 @@ import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import ParamOverrideEntry from '../../components/table/usage-logs/components/ParamOverrideEntry';
 
-export const useLogsData = () => {
+export const useLogsData = ({ mode = 'user', portalSession = null } = {}) => {
   const { t } = useTranslation();
+  const isTokenPortal = mode === 'tokenPortal';
 
   // Define column keys for selection
   const COLUMN_KEYS = {
@@ -75,14 +77,15 @@ export const useLogsData = () => {
   const [logType, setLogType] = useState(0);
 
   // User and admin
-  const isAdminUser = isAdmin();
-  // Role-specific storage key to prevent different roles from overwriting each other
-  const STORAGE_KEY = isAdminUser
-    ? 'logs-table-columns-admin'
-    : 'logs-table-columns-user';
-  const BILLING_DISPLAY_MODE_STORAGE_KEY = isAdminUser
-    ? 'logs-billing-display-mode-admin'
-    : 'logs-billing-display-mode-user';
+  const isAdminUser = !isTokenPortal && isAdmin();
+  const storageScope = isTokenPortal
+    ? 'token-portal'
+    : isAdminUser
+      ? 'admin'
+      : 'user';
+  const STORAGE_KEY = `logs-table-columns-${storageScope}`;
+  const BILLING_DISPLAY_MODE_STORAGE_KEY =
+    `logs-billing-display-mode-${storageScope}`;
 
   // Statistics state
   const [stat, setStat] = useState({
@@ -171,7 +174,9 @@ export const useLogsData = () => {
   );
 
   // Compact mode
-  const [compactMode, setCompactMode] = useTableCompactMode('logs');
+  const [compactMode, setCompactMode] = useTableCompactMode(
+    isTokenPortal ? 'logs-token-portal' : 'logs',
+  );
 
   // User info modal state
   const [showUserInfo, setShowUserInfoModal] = useState(false);
@@ -290,16 +295,19 @@ export const useLogsData = () => {
 
     const params = {
       type: currentLogType,
-      token_name,
       model_name,
       start_timestamp: Date.parse(start_timestamp) / 1000,
       end_timestamp: Date.parse(end_timestamp) / 1000,
-      group,
       request_id,
       request_path,
     };
 
-    if (includeAdminFields) {
+    if (!isTokenPortal) {
+      params.token_name = token_name;
+      params.group = group;
+    }
+
+    if (includeAdminFields && !isTokenPortal) {
       params.username = username;
       params.channel = channel;
     }
@@ -345,6 +353,20 @@ export const useLogsData = () => {
   };
 
   // Statistics functions
+  const getTokenPortalLogStat = async () => {
+    const query = buildQueryString(
+      buildLogQueryParams({ includeAdminFields: false }),
+    );
+    const url = `/api/token-portal/log/stat?${query}`;
+    const res = await TokenPortalAPI.get(url);
+    const { success, message, data } = res.data;
+    if (success) {
+      setStat(data);
+    } else {
+      showError(message);
+    }
+  };
+
   const getLogSelfStat = async () => {
     const query = buildQueryString(
       buildLogQueryParams({ includeAdminFields: false }),
@@ -376,7 +398,9 @@ export const useLogsData = () => {
       return;
     }
     setLoadingStat(true);
-    if (isAdminUser) {
+    if (isTokenPortal) {
+      await getTokenPortalLogStat();
+    } else if (isAdminUser) {
       await getLogStat();
     } else {
       await getLogSelfStat();
@@ -758,6 +782,7 @@ export const useLogsData = () => {
     setLoading(true);
 
     let url = '';
+    const apiClient = isTokenPortal ? TokenPortalAPI : API;
     const query = buildQueryString(
       buildLogQueryParams({
         customLogType,
@@ -767,10 +792,12 @@ export const useLogsData = () => {
     );
     if (isAdminUser) {
       url = `/api/log/?${query}`;
+    } else if (isTokenPortal) {
+      url = `/api/token-portal/log?${query}`;
     } else {
       url = `/api/log/self/?${query}`;
     }
-    const res = await API.get(url);
+    const res = await apiClient.get(url);
     const { success, message, data } = res.data;
     if (success) {
       const newPageData = data.items;
@@ -819,8 +846,13 @@ export const useLogsData = () => {
       const query = buildQueryString(
         buildLogQueryParams({ includeAdminFields: isAdminUser }),
       );
-      const exportUrl = isAdminUser ? '/api/log/export' : '/api/log/self/export';
-      const response = await API.get(`${exportUrl}?${query}`, {
+      const apiClient = isTokenPortal ? TokenPortalAPI : API;
+      const exportUrl = isAdminUser
+        ? '/api/log/export'
+        : isTokenPortal
+          ? '/api/token-portal/log/export'
+          : '/api/log/self/export';
+      const response = await apiClient.get(`${exportUrl}?${query}`, {
         responseType: 'blob',
         disableDuplicate: true,
         skipErrorHandler: true,
@@ -843,6 +875,27 @@ export const useLogsData = () => {
       showError(error);
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handlePortalLogout = async () => {
+    if (!isTokenPortal) {
+      return;
+    }
+
+    try {
+      await TokenPortalAPI.post(
+        '/api/token-portal/logout',
+        {},
+        {
+          disableDuplicate: true,
+          skipErrorHandler: true,
+        },
+      );
+    } catch {
+      // Ignore network errors and force the portal session exit flow.
+    } finally {
+      window.location.href = '/token-portal/login';
     }
   };
 
@@ -895,6 +948,8 @@ export const useLogsData = () => {
     logType,
     stat,
     isAdminUser,
+    isTokenPortal,
+    portalSession,
 
     // Form state
     formApi,
@@ -945,6 +1000,7 @@ export const useLogsData = () => {
     hasExpandableRows,
     setLogType,
     openParamOverrideModal,
+    handlePortalLogout,
 
     // Translation
     t,

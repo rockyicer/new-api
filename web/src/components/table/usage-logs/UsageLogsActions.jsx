@@ -30,11 +30,17 @@ const LogsActions = ({
   compactMode,
   setCompactMode,
   handleExport,
+  handlePortalLogout,
   exporting,
+  isTokenPortal,
+  portalSession,
   t,
 }) => {
   const showSkeleton = useMinimumLoadingTime(loadingStat);
   const needSkeleton = !showStat || showSkeleton;
+  const portalIdentity = [portalSession?.token_name, portalSession?.masked_key]
+    .filter(Boolean)
+    .join(' / ');
 
   const placeholder = (
     <Space>
@@ -82,10 +88,29 @@ const LogsActions = ({
           >
             TPM: {stat.tpm}
           </Tag>
+          {isTokenPortal && portalIdentity && (
+            <Tag
+              color='grey'
+              style={{
+                fontWeight: 500,
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+                padding: 13,
+                maxWidth: 320,
+              }}
+              className='!rounded-lg'
+            >
+              {portalIdentity}
+            </Tag>
+          )}
         </Space>
       </Skeleton>
 
       <div className='flex items-center gap-2'>
+        {isTokenPortal && (
+          <Button type='tertiary' size='small' onClick={handlePortalLogout}>
+            {t('退出查询')}
+          </Button>
+        )}
         <Button
           type='tertiary'
           size='small'

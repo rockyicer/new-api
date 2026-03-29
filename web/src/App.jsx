@@ -37,6 +37,7 @@ import Token from './pages/Token';
 import Redemption from './pages/Redemption';
 import TopUp from './pages/TopUp';
 import Log from './pages/Log';
+import TokenPortalLog from './pages/TokenPortalLog';
 import Chat from './pages/Chat';
 import Chat2Link from './pages/Chat2Link';
 import Midjourney from './pages/Midjourney';
@@ -195,6 +196,14 @@ function App() {
           element={
             <Suspense fallback={<Loading></Loading>} key={location.pathname}>
               <TokenPortalLoginForm />
+            </Suspense>
+          }
+        />
+        <Route
+          path='/token-portal/log'
+          element={
+            <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+              <TokenPortalLog />
             </Suspense>
           }
         />

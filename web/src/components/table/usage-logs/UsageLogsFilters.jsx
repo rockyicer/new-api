@@ -32,6 +32,7 @@ const LogsFilters = ({
   setLogType,
   loading,
   isAdminUser,
+  isTokenPortal,
   t,
 }) => {
   return (
@@ -66,14 +67,16 @@ const LogsFilters = ({
           </div>
 
           {/* 其他搜索字段 */}
-          <Form.Input
-            field='token_name'
-            prefix={<IconSearch />}
-            placeholder={t('令牌名称')}
-            showClear
-            pure
-            size='small'
-          />
+          {!isTokenPortal && (
+            <Form.Input
+              field='token_name'
+              prefix={<IconSearch />}
+              placeholder={t('令牌名称')}
+              showClear
+              pure
+              size='small'
+            />
+          )}
 
           <Form.Input
             field='model_name'
@@ -84,14 +87,16 @@ const LogsFilters = ({
             size='small'
           />
 
-          <Form.Input
-            field='group'
-            prefix={<IconSearch />}
-            placeholder={t('分组')}
-            showClear
-            pure
-            size='small'
-          />
+          {!isTokenPortal && (
+            <Form.Input
+              field='group'
+              prefix={<IconSearch />}
+              placeholder={t('分组')}
+              showClear
+              pure
+              size='small'
+            />
+          )}
 
           <Form.Input
             field='request_id'
@@ -111,7 +116,7 @@ const LogsFilters = ({
             size='small'
           />
 
-          {isAdminUser && (
+          {isAdminUser && !isTokenPortal && (
             <>
               <Form.Input
                 field='channel'
