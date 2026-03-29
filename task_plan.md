@@ -1193,3 +1193,484 @@ bun run build
 - 已确认第 2 个 tab 展示按模型分组的日消耗趋势，并纠正当前按 count 组装的语义偏差。
 - 已确认优先复用现有 `/api/data/self`、`/api/data` 接口，不新增后端日报接口。
 - 已确认优先通过前端专用数据加载与日聚合实现，不修改 `quota_data` 的落库粒度。
+
+## 10. 基于 API Key 的学生用量查询入口实施计划
+
+> I'm using the writing-plans skill to create the implementation plan.
+>
+> 已确认采用方案 2：学生在网页输入完整 `sk-...`，后端验证后换取“只读 portal session”，后续所有查询都绑定到该 `token_id`，不再让前端持续携带真实 API key。
+
+**Goal:** 在不新增学生用户账号的前提下，为每个 token 提供一个“学生查询入口”，让学生可以在网页输入自己的 `sk-...` 后，查看该 token 的消耗额度、RPM/TPM、使用日志和 CSV 导出。
+
+**Architecture:** 前端新增 `token-portal` 独立入口和登录页，学生提交 `sk-...` 到后端 `POST /api/token-portal/login`。后端复用现有 token 只读校验能力校验 key，写入一组与普通用户 session 并存的 portal session key，后续 `GET /api/token-portal/log`、`/stat`、`/export` 全部强制使用 `token_id` 精确过滤。前端复用现有使用日志页组件，新增 `tokenPortal` 模式切换数据源和筛选字段，而不重写整套表格。
+
+**Tech Stack:** Go + Gin + GORM, session cookie, React 18 + Vite + Semi UI, axios, Bun。
+
+---
+
+### 10.1 已确认范围
+
+- 学生输入的是完整 API key，也就是实际调用使用的 `sk-...`。
+- 学生只能查看当前输入 token 对应的数据，不能切换到其他 token 或其他用户。
+- 学生需要看到：
+  - 顶部消耗额度
+  - RPM / TPM
+  - 日志表格
+  - 时间筛选
+  - 请求路径 / 模型 / Request ID 筛选
+  - 导出 CSV
+- 学生不需要看到：
+  - token 管理
+  - 额度修改
+  - 账号登录
+  - 管理员日志
+  - 以用户维度切换查询
+- 首版允许“已过期 / 已禁用 / 已耗尽”的 token 仍可查询历史记录，只要 token 记录仍存在且所属用户未被封禁。
+- token 被硬删除后，portal session 应失效。
+
+### 10.2 已确认设计决策
+
+- **不直接复用** `GET /api/log/token` 作为前端主数据源，因为它当前只提供最近一小批日志，没有 stat、export、分页和 portal 会话能力。
+- **不使用** `token_name` 作为 portal 查询的主过滤条件，必须使用 `token_id` 精确过滤，避免同账号内 token 同名时串数据。
+- **不将真实 `sk-...` 落地到 localStorage / sessionStorage / URL query**。前端只在登录提交那一次携带完整 key。
+- portal session 和普通用户 session **必须共存但互不覆盖**，不能复用 `username` / `role` / `id` 这组普通登录 key。
+- 前端 portal 请求 **不复用** 当前全局 `API` 实例，因为全局 401 处理会跳转 `/login?expired=true`，对 portal 模式是错误的。
+- 新增一个 `TokenPortalAPI` 或等价的 portal 专用 helper，401 / 403 时跳转 `/token-portal/login?expired=true`。
+- 学生页复用现有 `usage-logs` 组件，采用 `mode='tokenPortal'`，小步扩展，不重写大量 UI。
+
+### Task 22: 后端 portal 会话与路由合同
+
+**Files:**
+- Create: `controller/token_portal.go`
+- Create: `middleware/token_portal.go`
+- Create: `controller/token_portal_test.go`
+- Modify: `router/api-router.go`
+- Review: `middleware/auth.go`
+- Review: `model/token.go`
+
+**Step 1: 先写失败的后端集成测试**
+
+- 覆盖以下场景：
+  - `POST /api/token-portal/login` 使用合法 `sk-...` 成功
+  - 非法 key 登录失败
+  - `GET /api/token-portal/me` 在未登录时返回 401/403
+  - `POST /api/token-portal/logout` 只清理 portal 会话
+  - 普通用户 session 与 portal session 同时存在时，互不影响
+
+**Step 2: 定义 portal session key**
+
+- 在 `middleware/token_portal.go` 固定 portal 会话 key，例如：
+  - `portal_token_id`
+  - `portal_user_id`
+  - `portal_token_name`
+  - `portal_masked_key`
+- 禁止复用 `username` / `role` / `id` 这组普通登录字段。
+
+**Step 3: 实现 portal 登录接口**
+
+- `POST /api/token-portal/login`
+- 请求体建议：
+
+```json
+{
+  "api_key": "sk-..."
+}
+```
+
+- 验证语义对齐 `TokenAuthReadOnly()`：
+  - 允许已过期 / 已禁用 / 已耗尽 token 查询历史记录
+  - 仍然检查 token 是否存在
+  - 仍然检查所属用户是否已被封禁
+- 响应只返回非敏感信息，例如：
+  - `token_name`
+  - `masked_key`
+  - `token_id`
+- 禁止在响应中回传完整 key。
+
+**Step 4: 实现 portal 会话读取中间件**
+
+- 新增 `TokenPortalAuth()`，每次请求都基于 `portal_token_id` 重新读 DB 或 cache 验证 token 仍存在。
+- 中间件应在 context 写入：
+  - `token_id`
+  - `token_name`
+  - `id`（token 所属 user id，仅供内部查询组合使用，不视为登录用户）
+  - `portal_mode=true`
+
+**Step 5: 实现 portal 会话查询 / 退出接口**
+
+- `GET /api/token-portal/me`
+- `POST /api/token-portal/logout`
+- logout 只清理 portal session key，不影响普通账号登录状态。
+
+**Step 6: 跑后端相关测试**
+
+Run:
+
+```powershell
+go test ./controller -run TokenPortal -v
+```
+
+### Task 23: 将日志查询升级为 `token_id` 精确过滤
+
+**Files:**
+- Modify: `model/log.go`
+- Create: `model/log_token_filter_test.go`
+- Review: `controller/log.go`
+
+**Step 1: 先写 `token_id` 隔离测试**
+
+- 构造同一个用户的两个 token，名称故意可相同或相近。
+- 记录日志后，断言按 `token_id=A` 查询时，不会拿到 `token_id=B` 的数据。
+
+**Step 2: 扩展 `LogFilter`**
+
+- 在 `model.LogFilter` 新增：
+
+```go
+TokenID *int
+```
+
+- 保持现有 `TokenName` 字段，供普通用户页面继续使用。
+
+**Step 3: 更新 `applyLogFilters()`**
+
+- portal 模式下必须优先按 `logs.token_id = ?` 过滤。
+- 如果 `TokenID != nil`，则不依赖 `TokenName` 做主隔离条件。
+
+**Step 4: 新增 portal 专用查询封装**
+
+- 在 `model/log.go` 内新增或封装：
+  - `GetTokenLogsByFilter(filters LogFilter, startIdx int, num int)`
+  - `GetTokenLogsForExport(filters LogFilter)`
+- 内部都基于 `applyLogFilters()`，不重复拼 SQL。
+
+**Step 5: 跑 model 测试**
+
+Run:
+
+```powershell
+go test ./model -run "TokenFilter|LogFilter" -v
+```
+
+### Task 24: portal 统计 / 导出接口
+
+**Files:**
+- Modify: `controller/token_portal.go`
+- Modify: `controller/log.go`
+- Modify: `model/log.go`
+- Modify: `router/api-router.go`
+- Create: `controller/token_portal_export_test.go`
+
+**Step 1: 先写 stat 和 export 的失败测试**
+
+- `GET /api/token-portal/log/stat`
+- `GET /api/token-portal/log`
+- `GET /api/token-portal/log/export`
+- 断言查询结果只包含当前 portal session 绑定的 `token_id` 数据。
+
+**Step 2: 新增统计层 helper**
+
+- 不要继续使用仅按 `username + token_name` 组合的 `SumUsedQuota(...)` 作为 portal 主入口。
+- 新增 `SumUsedQuotaByFilter(filters LogFilter)` 或等价 portal 专用封装，确保 `token_id` 是主过滤条件。
+
+**Step 3: 实现 portal 日志列表 / 统计 / 导出**
+
+- `GET /api/token-portal/log`
+- `GET /api/token-portal/log/stat`
+- `GET /api/token-portal/log/export`
+- 只接受以下筛选参数：
+  - `type`
+  - `start_timestamp`
+  - `end_timestamp`
+  - `model_name`
+  - `request_id`
+  - `request_path`
+- 忽略 `username` / `channel` / `token_name` / `group` 这些不应由学生控制的字段。
+
+**Step 4: 复用 CSV 写出逻辑**
+
+- 继续复用 `writeLogsCSV(...)`
+- 但导出数据源改为 portal 专用 filter 路径。
+
+**Step 5: 验证 CSV 列不泄露其他 token**
+
+- 导出中可保留 `token_name` 列，作为当前 token 的名称展示。
+- 禁止出现其他 token 的日志行。
+
+**Step 6: 跑 controller 测试**
+
+Run:
+
+```powershell
+go test ./controller -run "TokenPortal|Export" -v
+```
+
+### Task 25: 前端 portal 专用 API helper 与 401 跳转
+
+**Files:**
+- Create: `web/src/helpers/tokenPortalApi.js`
+- Modify: `web/src/helpers/index.js`
+- Review: `web/src/helpers/api.js`
+- Review: `web/src/helpers/utils.jsx`
+
+**Step 1: 新增 portal 专用 axios 实例**
+
+- 不要复用当前全局 `API`，因为它默认携带 `New-API-User`，且 401 会强制跳回 `/login`。
+- 新增 `TokenPortalAPI`，特性：
+  - 不带 `New-API-User`
+  - 默认同源 cookie
+  - 401 / 403 时跳转 `/token-portal/login?expired=true`
+
+**Step 2: 封装 portal helper 函数**
+
+- `loginWithTokenPortal(apiKey)`
+- `logoutTokenPortal()`
+- `getTokenPortalSession()`
+- `getTokenPortalLogs(params)`
+- `getTokenPortalStat(params)`
+- `exportTokenPortalLogs(params)`
+
+**Step 3: 审查前端敏感信息落地**
+
+- 禁止在 localStorage / sessionStorage 保存完整 `sk-...`
+- 如需本地展示，只存 `masked_key` 和 `token_name`
+
+**Step 4: 验证 401 跳转差异**
+
+- 普通用户路由继续跳 `/login`
+- portal 路由只跳 `/token-portal/login`
+
+**Step 5: 前端构建验证**
+
+Run:
+
+```powershell
+cd web
+bun run build
+```
+
+### Task 26: 新增“API 用量查询”入口与登录页
+
+**Files:**
+- Create: `web/src/pages/TokenPortalLogin/index.jsx`
+- Create: `web/src/components/auth/TokenPortalLoginForm.jsx`
+- Modify: `web/src/App.jsx`
+- Modify: `web/src/components/auth/LoginForm.jsx`
+- Modify: `web/src/components/layout/headerbar/UserArea.jsx`
+
+**Step 1: 新增前端路由**
+
+- `/token-portal/login`
+- `/token-portal/log`
+
+**Step 2: 新增顶部入口**
+
+- 在 `UserArea.jsx` 的未登录区域新增“API 用量查询”按钮或链接。
+- 保持现有 `登录` / `注册` 按钮不被覆盖。
+
+**Step 3: 新增登录页**
+
+- 页面只有一个输入框：`API 密钥`
+- 一个主按钮：`查询`
+- 不显示用户名 / 密码 / OAuth / 注册相关逻辑
+
+**Step 4: 在普通登录页增加导航**
+
+- 在 `LoginForm.jsx` 内新增一个明显的次入口，跳到 `/token-portal/login`
+- 不要把两种登录表单混在一个提交处理函数里
+
+**Step 5: 登录成功后跳转**
+
+- `POST /api/token-portal/login` 成功后跳转 `/token-portal/log`
+- 登录失败时只显示 portal 错误提示，不改写普通用户 localStorage
+
+**Step 6: 构建验证**
+
+Run:
+
+```powershell
+cd web
+bun run build
+```
+
+### Task 27: 复用现有使用日志页，新增 `tokenPortal` 模式
+
+**Files:**
+- Create: `web/src/pages/TokenPortalLog/index.jsx`
+- Modify: `web/src/components/table/usage-logs/index.jsx`
+- Modify: `web/src/components/table/usage-logs/UsageLogsFilters.jsx`
+- Modify: `web/src/components/table/usage-logs/UsageLogsActions.jsx`
+- Modify: `web/src/hooks/usage-logs/useUsageLogsData.jsx`
+- Review: `web/src/pages/Log/index.jsx`
+
+**Step 1: 为 `usage-logs` 添加 `mode` 入口**
+
+- 默认保持 `mode='user'`
+- portal 页传入 `mode='tokenPortal'`
+
+**Step 2: 在 hook 里切换数据源**
+
+- 普通用户继续使用：
+  - `/api/log/self`
+  - `/api/log/self/stat`
+  - `/api/log/self/export`
+- portal 模式使用：
+  - `/api/token-portal/log`
+  - `/api/token-portal/log/stat`
+  - `/api/token-portal/log/export`
+
+**Step 3: 缩减 portal 模式的筛选项**
+
+- 保留：
+  - `dateRange`
+  - `model_name`
+  - `request_id`
+  - `request_path`
+  - `logType`
+- 隐藏：
+  - `username`
+  - `channel`
+  - `token_name`
+  - `group`
+
+**Step 4: 复用统计卡片和导出按钮**
+
+- 保留现有顶部 `消耗额度 / RPM / TPM`
+- 保留 `导出 CSV`
+- 在 portal 模式下新增一个 `退出查询` 按钮，调用 `/api/token-portal/logout`
+
+**Step 5: 在页面加载时读取 portal session**
+
+- 进入 `/token-portal/log` 时先读 `/api/token-portal/me`
+- 未登录或会话失效时直接跳 `/token-portal/login?expired=true`
+- 如需在页面上展示当前 token 信息，只展示 `token_name` 或 `masked_key`
+
+**Step 6: 前端构建验证**
+
+Run:
+
+```powershell
+cd web
+bun run build
+```
+
+### Task 28: portal 模式下的过期 / 退出 / 共存回归
+
+**Files:**
+- Modify: `web/src/components/table/usage-logs/UsageLogsActions.jsx`
+- Modify: `web/src/components/auth/TokenPortalLoginForm.jsx`
+- Modify: `controller/token_portal.go`
+- Modify: `middleware/token_portal.go`
+- Review: `web/src/components/auth/LoginForm.jsx`
+
+**Step 1: 验证 portal 过期后的前端去向**
+
+- 会话失效后应跳回 `/token-portal/login?expired=true`
+- 禁止误跳到 `/login?expired=true`
+
+**Step 2: 验证 portal logout**
+
+- portal logout 之后，portal 页立即不可用
+- 普通用户若同时已登录，不应被波及
+
+**Step 3: 验证普通登录回归**
+
+- 普通 `/login`
+- 普通 `/console/log`
+- 普通 `/api/log/self`
+- 都不应被 portal 模式改坏
+
+### Task 29: 文案与多语言
+
+**Files:**
+- Modify: `web/src/i18n/locales/zh-CN.json`
+- Modify: `web/src/i18n/locales/en.json`
+- Modify: `web/src/i18n/locales/fr.json`
+- Modify: `web/src/i18n/locales/ja.json`
+- Modify: `web/src/i18n/locales/ru.json`
+- Modify: `web/src/i18n/locales/vi.json`
+- Modify: `web/src/i18n/locales/zh-TW.json`
+
+**Step 1: 新增 portal 入口文案**
+
+- `API 用量查询`
+- `输入 API 密钥`
+- `查询`
+- `退出查询`
+- `API 密钥无效`
+- `查询会话已过期`
+
+**Step 2: 审查是否复用现有 key**
+
+- 只在确实没有可复用 key 时才新增
+- 避免 portal 功能引入大量重复文案
+
+**Step 3: 构建验证**
+
+Run:
+
+```powershell
+cd web
+bun run build
+```
+
+### Task 30: 联调验收与回归
+
+**Files:**
+- Review: `controller/token_portal.go`
+- Review: `middleware/token_portal.go`
+- Review: `model/log.go`
+- Review: `web/src/components/auth/TokenPortalLoginForm.jsx`
+- Review: `web/src/hooks/usage-logs/useUsageLogsData.jsx`
+- Review: `web/src/components/table/usage-logs/UsageLogsFilters.jsx`
+- Review: `web/src/components/table/usage-logs/UsageLogsActions.jsx`
+
+**Step 1: 后端自动化验证**
+
+Run:
+
+```powershell
+go test ./controller ./model -run "TokenPortal|Export|LogFilter" -v
+```
+
+**Step 2: 前端构建验证**
+
+Run:
+
+```powershell
+cd web
+bun run build
+```
+
+**Step 3: 手工验收**
+
+- 在未登录状态下，顶部能看到“API 用量查询”入口
+- 点击入口后进入只有一个 API key 输入框的页面
+- 输入有效 `sk-...` 后进入 `/token-portal/log`
+- 顶部能看到消耗额度 / RPM / TPM
+- 日志列表只包含当前 token 的记录
+- `request_path` / `model_name` / `request_id` / 时间筛选均可用
+- `导出 CSV` 只包含当前 token 的日志
+- `退出查询` 后页面回到 `/token-portal/login`
+
+**Step 4: 回归检查**
+
+- 普通用户 `/login` 流程不变
+- 普通用户 `/console/log` 流程不变
+- 现有 `/api/usage/token` 和 `/api/log/token` 接口不被破坏
+- 同一个浏览器内，portal session 和管理员 session 可并存
+
+### 10.3 关键风险
+
+- 当前前端全局 `showError()` 对 401 的默认去向是 `/login`，如果没有 portal 专用 API 实例，portal 页异常时会跳错页。
+- 当前日志筛选以 `token_name` 为现有用户场景的约定，如果 portal 没有强制切换到 `token_id`，在“同名 token”时会出现串数据风险。
+- portal session 若直接复用普通用户 session 字段，容易把“API key 查询”和“账号登录”冲在一起。
+- 如果在前端 localStorage/sessionStorage 本地保存完整 `sk-...`，就相当于把真实调用密钥暴露到浏览器持久化存储，这与方案 2 的安全目标相冲突。
+
+### 10.4 已确认决策
+
+- 已确认学生输入完整 `sk-...`，但前端只负责提交一次，后续改用 portal session。
+- 已确认 portal 查询主键使用 `token_id`，不使用 `token_name` 作为主隔离条件。
+- 已确认前端复用现有 `usage-logs` 组件，采用 `tokenPortal` 模式小步扩展。
+- 已确认顶部和登录页都要提供“API 用量查询”入口。
+- 已确认 portal 401 / 403 跳回 `/token-portal/login`，不跳回普通 `/login`。
