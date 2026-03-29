@@ -250,6 +250,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 
 type LogFilter struct {
 	UserID         *int
+	TokenID        *int
 	LogType        int
 	StartTimestamp int64
 	EndTimestamp   int64
@@ -290,6 +291,9 @@ func applyLogFilters(tx *gorm.DB, filters LogFilter) (*gorm.DB, error) {
 	}
 	if filters.UserID != nil {
 		tx = tx.Where("logs.user_id = ?", *filters.UserID)
+	}
+	if filters.TokenID != nil {
+		tx = tx.Where("logs.token_id = ?", *filters.TokenID)
 	}
 	if filters.LogType != LogTypeUnknown {
 		tx = tx.Where("logs.type = ?", filters.LogType)

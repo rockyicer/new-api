@@ -118,3 +118,44 @@ func TestApplyLogFilters_RequestPathRequiresExactMatch(t *testing.T) {
 	assert.Equal(t, "req-exact", logs[0].RequestId)
 	assert.Equal(t, "/v1/chat/completions", logs[0].RequestPath)
 }
+
+func TestApplyLogFilters_MatchesExactTokenIDEvenWhenTokenNamesCollide(t *testing.T) {
+	truncateTables(t)
+
+	createLogForFilterTest(t, &Log{
+		UserId:      11,
+		TokenId:     101,
+		CreatedAt:   1_700_000_100,
+		Type:        LogTypeConsume,
+		TokenName:   "stu_shared",
+		ModelName:   "gpt-4o-mini",
+		RequestId:   "req-token-101",
+		RequestPath: "/v1/chat/completions",
+	})
+	createLogForFilterTest(t, &Log{
+		UserId:      11,
+		TokenId:     202,
+		CreatedAt:   1_700_000_101,
+		Type:        LogTypeConsume,
+		TokenName:   "stu_shared",
+		ModelName:   "gpt-4o-mini",
+		RequestId:   "req-token-202",
+		RequestPath: "/v1/chat/completions",
+	})
+
+	userID := 11
+	tokenID := 202
+	tx, err := applyLogFilters(LOG_DB.Model(&Log{}), LogFilter{
+		UserID:    &userID,
+		TokenID:   &tokenID,
+		LogType:   LogTypeConsume,
+		TokenName: "stu_shared",
+	})
+	require.NoError(t, err)
+
+	var logs []Log
+	require.NoError(t, tx.Order("logs.id asc").Find(&logs).Error)
+	require.Len(t, logs, 1)
+	assert.Equal(t, 202, logs[0].TokenId)
+	assert.Equal(t, "req-token-202", logs[0].RequestId)
+}
