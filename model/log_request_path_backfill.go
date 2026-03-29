@@ -1,11 +1,9 @@
 package model
 
 import (
-	"errors"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
-	"gorm.io/gorm"
 )
 
 const (
@@ -164,12 +162,12 @@ func saveLogRequestPathBackfillResult(result BackfillResult) error {
 
 func getLogBackfillOptionValue(key string) (string, error) {
 	var option Option
-	err := DB.Where("key = ?", key).First(&option).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return "", nil
+	result := DB.Where("key = ?", key).Limit(1).Find(&option)
+	if result.Error != nil {
+		return "", result.Error
 	}
-	if err != nil {
-		return "", err
+	if result.RowsAffected == 0 {
+		return "", nil
 	}
 	return option.Value, nil
 }
