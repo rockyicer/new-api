@@ -66,14 +66,9 @@ const FooterBar = () => {
                   <Link to='/about' className='!text-semi-color-text-1'>
                     {t('关于项目')}
                   </Link>
-                  <a
-                    href='https://docs.newapi.pro/support/community-interaction/'
-                    target='_blank'
-                    rel='noopener noreferrer'
-                    className='!text-semi-color-text-1'
-                  >
+                  <Link to='/contact' className='!text-semi-color-text-1'>
                     {t('联系我们')}
-                  </a>
+                  </Link>
                   <a
                     href='https://docs.newapi.pro/wiki/features-introduction/'
                     target='_blank'
