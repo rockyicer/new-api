@@ -18,20 +18,19 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useState } from 'react';
-import { API, showError } from '../../helpers';
+import { API, getLogo, getSystemName, showError } from '../../helpers';
 import { marked } from 'marked';
-import { Empty } from '@douyinfe/semi-ui';
-import {
-  IllustrationConstruction,
-  IllustrationConstructionDark,
-} from '@douyinfe/semi-illustrations';
+import { Button, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
+import { IconPlay } from '@douyinfe/semi-icons';
+import { Link } from 'react-router-dom';
 
 const About = () => {
   const { t } = useTranslation();
   const [about, setAbout] = useState('');
   const [aboutLoaded, setAboutLoaded] = useState(false);
-  const currentYear = new Date().getFullYear();
+  const systemName = getSystemName();
+  const logo = getLogo();
 
   const displayAbout = async () => {
     setAbout(localStorage.getItem('about') || '');
@@ -55,101 +54,188 @@ const About = () => {
     displayAbout().then();
   }, []);
 
-  const emptyStyle = {
-    padding: '24px',
-  };
-
-  const customDescription = (
-    <div style={{ textAlign: 'center' }}>
-      <p>{t('可在设置页面设置关于内容，支持 HTML & Markdown')}</p>
-      {t('JustAPI项目仓库地址：')}
-      <a
-        href='https://github.com/QuantumNous/new-api'
-        target='_blank'
-        rel='noopener noreferrer'
-        className='!text-semi-color-primary'
-      >
-        https://github.com/QuantumNous/new-api
-      </a>
-      <p>
-        <a
-          href='https://github.com/QuantumNous/new-api'
-          target='_blank'
-          rel='noopener noreferrer'
-          className='!text-semi-color-primary'
-        >
-          JustAPI
-        </a>{' '}
-        {t('© {{currentYear}}', { currentYear })}{' '}
-        <a
-          href='https://github.com/QuantumNous'
-          target='_blank'
-          rel='noopener noreferrer'
-          className='!text-semi-color-primary'
-        >
-          QuantumNous
-        </a>{' '}
-        {t('| 基于')}{' '}
-        <a
-          href='https://github.com/songquanpeng/one-api/releases/tag/v0.5.4'
-          target='_blank'
-          rel='noopener noreferrer'
-          className='!text-semi-color-primary'
-        >
-          One API v0.5.4
-        </a>{' '}
-        © 2023{' '}
-        <a
-          href='https://github.com/songquanpeng'
-          target='_blank'
-          rel='noopener noreferrer'
-          className='!text-semi-color-primary'
-        >
-          JustSong
-        </a>
-      </p>
-      <p>
-        {t('本项目根据')}
-        <a
-          href='https://github.com/songquanpeng/one-api/blob/v0.5.4/LICENSE'
-          target='_blank'
-          rel='noopener noreferrer'
-          className='!text-semi-color-primary'
-        >
-          {t('MIT许可证')}
-        </a>
-        {t('授权，需在遵守')}
-        <a
-          href='https://www.gnu.org/licenses/agpl-3.0.html'
-          target='_blank'
-          rel='noopener noreferrer'
-          className='!text-semi-color-primary'
-        >
-          {t('AGPL v3.0协议')}
-        </a>
-        {t('的前提下使用。')}
-      </p>
-    </div>
-  );
-
   return (
     <div className='mt-[60px] px-2'>
       {aboutLoaded && about === '' ? (
-        <div className='flex justify-center items-center h-screen p-8'>
-          <Empty
-            image={
-              <IllustrationConstruction style={{ width: 150, height: 150 }} />
-            }
-            darkModeImage={
-              <IllustrationConstructionDark
-                style={{ width: 150, height: 150 }}
-              />
-            }
-            description={t('管理员暂时未设置任何关于内容')}
-            style={emptyStyle}
-          >
-            {customDescription}
-          </Empty>
+        <div className='relative min-h-[calc(100vh-60px)] overflow-hidden'>
+          <div className='blur-ball blur-ball-indigo' />
+          <div className='blur-ball blur-ball-teal' />
+
+          <div className='mx-auto max-w-6xl px-4 py-10 md:py-14 lg:py-20'>
+            <div
+              className='rounded-[32px] border p-8 md:p-10 lg:p-12 shadow-sm'
+              style={{
+                background: 'var(--semi-color-bg-0)',
+                borderColor: 'var(--semi-color-border)',
+              }}
+            >
+              <div className='flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between'>
+                <div className='max-w-3xl'>
+                  <div className='flex items-center gap-4'>
+                    <div
+                      className='flex h-16 w-16 items-center justify-center rounded-2xl border'
+                      style={{
+                        background: 'var(--semi-color-bg-1)',
+                        borderColor: 'var(--semi-color-border)',
+                      }}
+                    >
+                      <img
+                        src={logo}
+                        alt={systemName}
+                        className='h-10 w-10 object-contain'
+                      />
+                    </div>
+                    <div>
+                      <div className='text-xs font-semibold uppercase tracking-[0.32em] text-semi-color-text-2'>
+                        {systemName}
+                      </div>
+                      <h1 className='mt-2 text-4xl font-bold leading-tight text-semi-color-text-0 md:text-5xl lg:text-6xl'>
+                        <span className='shine-text'>
+                          {t('让大家都用得起 API')}
+                        </span>
+                      </h1>
+                    </div>
+                  </div>
+
+                  <p className='mt-6 text-base leading-8 text-semi-color-text-1 md:text-lg'>
+                    {t(
+                      'JUSTAPI 成立于 2026，专注于把多模型接入、统一网关、稳定调用与透明计费整合成一套更易用的产品体验。',
+                    )}
+                  </p>
+                  <p className='mt-4 text-base leading-8 text-semi-color-text-1 md:text-lg'>
+                    {t(
+                      '我们相信，API 不应该只是少数团队的基础设施，而应该成为每一位开发者、创业团队和企业都接得上、跑得稳、负担得起的能力底座。',
+                    )}
+                  </p>
+
+                  <div className='mt-8 flex flex-wrap gap-3'>
+                    <Link to='/console'>
+                      <Button
+                        theme='solid'
+                        type='primary'
+                        size='large'
+                        className='!rounded-3xl px-8'
+                        icon={<IconPlay />}
+                      >
+                        {t('获取密钥')}
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+
+                <div className='grid w-full max-w-xl gap-4 md:grid-cols-3 lg:max-w-md lg:grid-cols-1'>
+                  {[
+                    {
+                      title: t('公司介绍'),
+                      value: systemName,
+                      description: t(
+                        'JUSTAPI 是一家专注于 API 服务体验与模型接入效率的技术团队。',
+                      ),
+                    },
+                    {
+                      title: t('成立时间'),
+                      value: '2026',
+                      description: t('从产品第一天开始，就以长期可交付为目标。'),
+                    },
+                    {
+                      title: t('我们的目标'),
+                      value: t('让每一位开发者、团队与企业都用得起 API。'),
+                      description: t(
+                        '把复杂留在系统内部，把简单、高效和稳定交给每一位用户。',
+                      ),
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.title}
+                      className='rounded-[24px] border p-5'
+                      style={{
+                        background: 'var(--semi-color-fill-0)',
+                        borderColor: 'var(--semi-color-border)',
+                      }}
+                    >
+                      <div className='text-sm font-medium text-semi-color-text-2'>
+                        {item.title}
+                      </div>
+                      <div className='mt-3 text-xl font-semibold leading-8 text-semi-color-text-0'>
+                        {item.value}
+                      </div>
+                      <div className='mt-3 text-sm leading-6 text-semi-color-text-1'>
+                        {item.description}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className='mt-6 grid gap-4 lg:grid-cols-[1.2fr,0.8fr]'>
+              <div
+                className='rounded-[28px] border p-8 md:p-10'
+                style={{
+                  background: 'var(--semi-color-bg-0)',
+                  borderColor: 'var(--semi-color-border)',
+                }}
+              >
+                <Typography.Title
+                  heading={3}
+                  className='!mb-4 !text-semi-color-text-0'
+                >
+                  {t('为什么是 JUSTAPI')}
+                </Typography.Title>
+                <div className='space-y-4 text-base leading-8 text-semi-color-text-1'>
+                  <p>
+                    {t(
+                      '从模型接入到版本迭代，从价格透明到交付稳定，JUSTAPI 希望把复杂留在系统内部，把简单交给每一位用户。',
+                    )}
+                  </p>
+                  <p>
+                    {t(
+                      '无论你是个人开发者、小型团队还是正在扩张的企业，我们都希望你能用更低的门槛接入能力，用更可控的成本完成产品落地。',
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className='grid gap-4'>
+                {[
+                  {
+                    title: t('统一接入'),
+                    description: t(
+                      '统一管理多家模型供应商，减少切换与维护成本。',
+                    ),
+                  },
+                  {
+                    title: t('透明成本'),
+                    description: t(
+                      '提供更清晰的价格结构，让预算与调用规模更容易规划。',
+                    ),
+                  },
+                  {
+                    title: t('稳定交付'),
+                    description: t(
+                      '持续优化网关能力，让开发、测试与生产发布更顺滑。',
+                    ),
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.title}
+                    className='rounded-[24px] border p-6'
+                    style={{
+                      background: 'var(--semi-color-bg-0)',
+                      borderColor: 'var(--semi-color-border)',
+                    }}
+                  >
+                    <div className='text-lg font-semibold text-semi-color-text-0'>
+                      {item.title}
+                    </div>
+                    <div className='mt-2 text-sm leading-7 text-semi-color-text-1'>
+                      {item.description}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       ) : (
         <>

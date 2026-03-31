@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next';
 import { Typography } from '@douyinfe/semi-ui';
 import { getFooterHTML, getLogo, getSystemName } from '../../helpers';
 import { StatusContext } from '../../context/Status';
+import { Link } from 'react-router-dom';
 
 const FooterBar = () => {
   const { t } = useTranslation();
@@ -62,14 +63,9 @@ const FooterBar = () => {
                   {t('关于我们')}
                 </p>
                 <div className='flex flex-col gap-4'>
-                  <a
-                    href='https://docs.newapi.pro/wiki/project-introduction/'
-                    target='_blank'
-                    rel='noopener noreferrer'
-                    className='!text-semi-color-text-1'
-                  >
+                  <Link to='/about' className='!text-semi-color-text-1'>
                     {t('关于项目')}
-                  </a>
+                  </Link>
                   <a
                     href='https://docs.newapi.pro/support/community-interaction/'
                     target='_blank'
