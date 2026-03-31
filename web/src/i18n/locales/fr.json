@@ -3344,6 +3344,15 @@
     "请输入 API 密钥": "Veuillez saisir la clé API",
     "只需输入一次完整的 API 密钥，后续查询将使用只读会话。": "Saisissez la clé API complète une seule fois. Les consultations suivantes utiliseront une session en lecture seule.",
     "未启用": "Disabled",
+    "复制密钥": "Copier la clé",
+    "复制连接信息": "Copier les infos de connexion",
+    "检测到剪贴板中的连接信息": "Informations de connexion détectées dans le presse-papiers",
+    "自动填入": "Remplir auto",
+    "忽略": "Ignorer",
+    "从剪贴板粘贴配置": "Coller la config",
+    "剪贴板中未检测到连接信息": "Aucune info de connexion trouvée dans le presse-papiers",
+    "连接信息已填入": "Informations de connexion appliquées",
+    "无法读取剪贴板": "Impossible de lire le presse-papiers",
     "页面渲染出错，请刷新页面重试": "Une erreur est survenue lors du rendu de la page. Veuillez rafraîchir et réessayer.",
     "刷新页面": "Recharger la page"
   }

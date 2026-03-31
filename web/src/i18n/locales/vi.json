@@ -3895,6 +3895,15 @@
     "请输入 API 密钥": "Vui lòng nhập khóa API",
     "只需输入一次完整的 API 密钥，后续查询将使用只读会话。": "Chỉ cần nhập khóa API đầy đủ một lần, các lần tra cứu sau sẽ dùng phiên chỉ đọc.",
     "未启用": "Disabled",
+    "复制密钥": "Sao chép khóa",
+    "复制连接信息": "Sao chép thông tin kết nối",
+    "检测到剪贴板中的连接信息": "Phát hiện thông tin kết nối trong bộ nhớ tạm",
+    "自动填入": "Tự động điền",
+    "忽略": "Bỏ qua",
+    "从剪贴板粘贴配置": "Dán cấu hình",
+    "剪贴板中未检测到连接信息": "Không tìm thấy thông tin kết nối trong bộ nhớ tạm",
+    "连接信息已填入": "Đã áp dụng thông tin kết nối",
+    "无法读取剪贴板": "Không thể đọc bộ nhớ tạm",
     "页面渲染出错，请刷新页面重试": "Đã xảy ra lỗi khi hiển thị trang. Vui lòng tải lại trang và thử lại.",
     "刷新页面": "Tải lại trang"
   }
