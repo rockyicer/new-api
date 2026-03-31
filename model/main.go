@@ -293,6 +293,9 @@ func migrateDB() error {
 			return err
 		}
 	}
+	if err := BackfillSidebarChatHiddenDefault(); err != nil {
+		return err
+	}
 	return nil
 }
 
