@@ -76,6 +76,35 @@ export const mergeAdminConfig = (savedConfig) => {
   return merged;
 };
 
+export const buildDefaultUserSidebarConfig = (adminConfig) => {
+  const resolvedAdminConfig =
+    adminConfig && typeof adminConfig === 'object'
+      ? adminConfig
+      : mergeAdminConfig(null);
+  const defaultUserConfig = {};
+
+  Object.keys(resolvedAdminConfig).forEach((sectionKey) => {
+    if (!resolvedAdminConfig[sectionKey]?.enabled) {
+      return;
+    }
+
+    defaultUserConfig[sectionKey] = {
+      enabled: sectionKey === 'chat' ? false : true,
+    };
+
+    Object.keys(resolvedAdminConfig[sectionKey]).forEach((moduleKey) => {
+      if (
+        moduleKey !== 'enabled' &&
+        resolvedAdminConfig[sectionKey][moduleKey]
+      ) {
+        defaultUserConfig[sectionKey][moduleKey] = true;
+      }
+    });
+  });
+
+  return defaultUserConfig;
+};
+
 export const useSidebar = () => {
   const [statusState] = useContext(StatusContext);
   const [userConfig, setUserConfig] = useState(null);
@@ -124,39 +153,10 @@ export const useSidebar = () => {
         }
         setUserConfig(config);
       } else {
-        // 当用户没有配置时，生成一个基于管理员配置的默认用户配置
-        // 这样可以确保权限控制正确生效
-        const defaultUserConfig = {};
-        Object.keys(adminConfig).forEach((sectionKey) => {
-          if (adminConfig[sectionKey]?.enabled) {
-            defaultUserConfig[sectionKey] = { enabled: true };
-            // 为每个管理员允许的模块设置默认值为true
-            Object.keys(adminConfig[sectionKey]).forEach((moduleKey) => {
-              if (
-                moduleKey !== 'enabled' &&
-                adminConfig[sectionKey][moduleKey]
-              ) {
-                defaultUserConfig[sectionKey][moduleKey] = true;
-              }
-            });
-          }
-        });
-        setUserConfig(defaultUserConfig);
+        setUserConfig(buildDefaultUserSidebarConfig(adminConfig));
       }
     } catch (error) {
-      // 出错时也生成默认配置，而不是设置为空对象
-      const defaultUserConfig = {};
-      Object.keys(adminConfig).forEach((sectionKey) => {
-        if (adminConfig[sectionKey]?.enabled) {
-          defaultUserConfig[sectionKey] = { enabled: true };
-          Object.keys(adminConfig[sectionKey]).forEach((moduleKey) => {
-            if (moduleKey !== 'enabled' && adminConfig[sectionKey][moduleKey]) {
-              defaultUserConfig[sectionKey][moduleKey] = true;
-            }
-          });
-        }
-      });
-      setUserConfig(defaultUserConfig);
+      setUserConfig(buildDefaultUserSidebarConfig(adminConfig));
     } finally {
       if (shouldShowLoader) {
         setLoading(false);

@@ -45,6 +45,7 @@ import { StatusContext } from '../../../../context/Status';
 import { UserContext } from '../../../../context/User';
 import { useUserPermissions } from '../../../../hooks/common/useUserPermissions';
 import {
+  buildDefaultUserSidebarConfig,
   mergeAdminConfig,
   useSidebar,
 } from '../../../../hooks/common/useSidebar';
@@ -63,36 +64,9 @@ const NotificationSettings = ({
   // 左侧边栏设置相关状态
   const [sidebarLoading, setSidebarLoading] = useState(false);
   const [activeTabKey, setActiveTabKey] = useState('notification');
-  const [sidebarModulesUser, setSidebarModulesUser] = useState({
-    chat: {
-      enabled: true,
-      playground: true,
-      chat: true,
-    },
-    console: {
-      enabled: true,
-      detail: true,
-      token: true,
-      log: true,
-      midjourney: true,
-      task: true,
-    },
-    personal: {
-      enabled: true,
-      topup: true,
-      personal: true,
-    },
-    admin: {
-      enabled: true,
-      channel: true,
-      models: true,
-      deployment: true,
-      subscription: true,
-      redemption: true,
-      user: true,
-      setting: true,
-    },
-  });
+  const [sidebarModulesUser, setSidebarModulesUser] = useState(() =>
+    buildDefaultUserSidebarConfig(mergeAdminConfig(null)),
+  );
   const [adminConfig, setAdminConfig] = useState(null);
 
   // 使用后端权限验证替代前端角色判断
@@ -155,48 +129,29 @@ const NotificationSettings = ({
   };
 
   const resetSidebarModules = () => {
-    const defaultConfig = {
-      chat: { enabled: true, playground: true, chat: true },
-      console: {
-        enabled: true,
-        detail: true,
-        token: true,
-        log: true,
-        midjourney: true,
-        task: true,
-      },
-      personal: { enabled: true, topup: true, personal: true },
-      admin: {
-        enabled: true,
-        channel: true,
-        models: true,
-        deployment: true,
-        subscription: true,
-        redemption: true,
-        user: true,
-        setting: true,
-      },
-    };
-    setSidebarModulesUser(defaultConfig);
+    setSidebarModulesUser(
+      buildDefaultUserSidebarConfig(adminConfig || mergeAdminConfig(null)),
+    );
   };
 
   // 加载左侧边栏配置
   useEffect(() => {
     const loadSidebarConfigs = async () => {
+      let resolvedAdminConfig = mergeAdminConfig(null);
       try {
         // 获取管理员全局配置
         if (statusState?.status?.SidebarModulesAdmin) {
           try {
-            const adminConf = JSON.parse(
-              statusState.status.SidebarModulesAdmin,
+            resolvedAdminConfig = mergeAdminConfig(
+              JSON.parse(statusState.status.SidebarModulesAdmin),
             );
-            setAdminConfig(mergeAdminConfig(adminConf));
           } catch (error) {
-            setAdminConfig(mergeAdminConfig(null));
+            resolvedAdminConfig = mergeAdminConfig(null);
           }
         } else {
-          setAdminConfig(mergeAdminConfig(null));
+          resolvedAdminConfig = mergeAdminConfig(null);
         }
+        setAdminConfig(resolvedAdminConfig);
 
         // 获取用户个人配置
         const userRes = await API.get('/api/user/self');
@@ -208,9 +163,14 @@ const NotificationSettings = ({
             userConf = userRes.data.data.sidebar_modules;
           }
           setSidebarModulesUser(userConf);
+        } else {
+          setSidebarModulesUser(
+            buildDefaultUserSidebarConfig(resolvedAdminConfig),
+          );
         }
       } catch (error) {
         console.error('加载边栏配置失败:', error);
+        setSidebarModulesUser(buildDefaultUserSidebarConfig(resolvedAdminConfig));
       }
     };
 
