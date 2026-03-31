@@ -425,8 +425,8 @@ func calculateUserPermissions(userRole int) map[string]interface{} {
 
 	// 根据用户角色计算权限
 	if userRole == common.RoleRootUser {
-		// 超级管理员不需要边栏设置功能
-		permissions["sidebar_settings"] = false
+		// Root users can manage their own sidebar visibility as well.
+		permissions["sidebar_settings"] = true
 		permissions["sidebar_modules"] = map[string]interface{}{}
 	} else if userRole == common.RoleAdminUser {
 		// 管理员可以设置边栏，但不包含系统设置功能
