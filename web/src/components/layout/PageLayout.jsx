@@ -40,9 +40,24 @@ import { useLocation } from 'react-router-dom';
 import { normalizeLanguage } from '../../i18n/language';
 const { Sider, Content, Header } = Layout;
 
+const syncDocumentBranding = (systemName, logo) => {
+  if (systemName) {
+    document.title = systemName;
+  }
+
+  if (!logo) {
+    return;
+  }
+
+  const linkElement = document.querySelector("link[rel~='icon']");
+  if (linkElement) {
+    linkElement.href = logo;
+  }
+};
+
 const PageLayout = () => {
   const [userState, userDispatch] = useContext(UserContext);
-  const [, statusDispatch] = useContext(StatusContext);
+  const [statusState, statusDispatch] = useContext(StatusContext);
   const isMobile = useIsMobile();
   const [collapsed, , setCollapsed] = useSidebarCollapsed();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -104,18 +119,15 @@ const PageLayout = () => {
   useEffect(() => {
     loadUser();
     loadStatus().catch(console.error);
-    let systemName = getSystemName();
-    if (systemName) {
-      document.title = systemName;
-    }
-    let logo = getLogo();
-    if (logo) {
-      let linkElement = document.querySelector("link[rel~='icon']");
-      if (linkElement) {
-        linkElement.href = logo;
-      }
-    }
+    syncDocumentBranding(getSystemName(), getLogo());
   }, []);
+
+  useEffect(() => {
+    syncDocumentBranding(
+      statusState?.status?.system_name || getSystemName(),
+      statusState?.status?.logo || getLogo(),
+    );
+  }, [statusState?.status?.system_name, statusState?.status?.logo]);
 
   useEffect(() => {
     let preferredLang;
