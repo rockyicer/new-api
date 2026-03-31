@@ -71,9 +71,9 @@ const About = () => {
             >
               <div className='flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between'>
                 <div className='max-w-3xl'>
-                  <div className='flex items-center gap-4'>
+                  <div className='flex items-start gap-6 md:gap-8'>
                     <div
-                      className='flex h-16 w-16 items-center justify-center rounded-2xl border'
+                      className='flex h-20 w-20 shrink-0 items-center justify-center rounded-[28px] border md:h-24 md:w-24'
                       style={{
                         background: 'var(--semi-color-bg-1)',
                         borderColor: 'var(--semi-color-border)',
@@ -82,14 +82,14 @@ const About = () => {
                       <img
                         src={logo}
                         alt={systemName}
-                        className='h-10 w-10 object-contain'
+                        className='h-12 w-12 object-contain md:h-14 md:w-14'
                       />
                     </div>
-                    <div>
+                    <div className='pt-1 md:pt-2'>
                       <div className='text-xs font-semibold uppercase tracking-[0.32em] text-semi-color-text-2'>
                         {systemName}
                       </div>
-                      <h1 className='mt-2 text-4xl font-bold leading-tight text-semi-color-text-0 md:text-5xl lg:text-6xl'>
+                      <h1 className='mt-3 text-4xl font-bold leading-[0.96] text-semi-color-text-0 md:text-5xl lg:text-6xl'>
                         <span className='shine-text'>
                           {t('让大家都用得起 API')}
                         </span>
