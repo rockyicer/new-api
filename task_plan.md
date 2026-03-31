@@ -2004,3 +2004,21 @@ rg -n --hidden -S "New API|NewAPI|new-api|newapi|New-API"
   - 严格按方案 A 范围落地；
   - 自行迭代，不中途暂停等待 review；
   - 每个子任务完成后单独提交一次 commit。
+
+### 11.6 执行结果（2026-03-31）
+
+- 方案 A 已按计划执行完成；方案 B、方案 C 保留，未进入实现。
+- 已完成并提交的子任务：
+  - `662b8e48` `docs: confirm JustAPI phase A execution`
+  - `7608998d` `feat: switch default branding to JustAPI`
+  - `20792794` `feat: rebrand primary UI text to JustAPI`
+  - `34c8f7b0` `feat: rebrand docs and i18n copy to JustAPI`
+- 本轮验收结果：
+  - `go test ./common -run TestDefaultBranding -count=1` 通过。
+  - `go test ./...` 未全绿；当前失败项为 `model/token_period_quota_test.go:121` 的 `TestValidateUserTokenResetsExpiredMonthlyPeriodQuotaWindow`，与本轮品牌替换无直接关联。
+  - `bun run build` 在 `web/` 目录通过。
+  - 首页/控制台默认品牌名、浏览器标题、默认图标、About/Footer、主要展示文案、i18n key/value 与 README 可见品牌文案均已切换为 `JustAPI`。
+- 本轮刻意保留的残留项：
+  - 仓库 URL、镜像名、Docker container/service name、`docs.newapi.pro`、`new-api-worker`、`new-api-update-checker`、`/var/cache/new-api`、`/llm-metadata/api/newapi/*`
+  - 兼容性提示文案中把 `New API` 作为“上游转发项目名”出现的语句
+- 后续若启动方案 B / C，再单独评审这些运维/兼容性标识的替换策略。
