@@ -87,6 +87,7 @@ export const buildDefaultUserSidebarConfig = (adminConfig) => {
     },
     console: {
       midjourney: false,
+      task: false,
     },
   };
   const defaultUserConfig = {};
