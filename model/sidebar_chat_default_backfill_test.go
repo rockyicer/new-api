@@ -33,6 +33,7 @@ func TestGenerateDefaultSidebarConfigForRole_HidesChatSectionByDefault(t *testin
 	assert.True(t, config["chat"]["playground"])
 	assert.True(t, config["chat"]["chat"])
 	assert.False(t, config["console"]["midjourney"])
+	assert.False(t, config["console"]["task"])
 }
 
 func TestBackfillSidebarChatHiddenDefault_UpdatesExistingUsersOnce(t *testing.T) {
@@ -169,4 +170,61 @@ func TestBackfillSidebarDrawingLogHiddenDefault_UpdatesExistingUsersOnce(t *test
 	reopenedConfig := decodeSidebarModulesForTest(t, reopenedSetting.SidebarModules)
 	assert.True(t, reopenedConfig["console"]["midjourney"])
 	assert.Equal(t, sidebarDrawingLogHiddenDefaultBackfillCompleted, getOptionValueForTest(t, sidebarDrawingLogHiddenDefaultBackfillStatusKey))
+}
+
+func TestBackfillSidebarTaskLogHiddenDefault_UpdatesExistingUsersOnce(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, DB.AutoMigrate(&Option{}))
+
+	userSidebarConfig := map[string]map[string]bool{
+		"chat": {
+			"enabled":    false,
+			"playground": true,
+			"chat":       true,
+		},
+		"console": {
+			"enabled":    true,
+			"detail":     true,
+			"token":      true,
+			"log":        true,
+			"midjourney": false,
+			"task":       true,
+		},
+	}
+
+	user := User{
+		Username: "task-log-user",
+		Password: "secret",
+		AffCode:  "task-log-aff-code",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+	}
+	user.SetSetting(dto.UserSetting{
+		Language:       "zh-CN",
+		SidebarModules: encodeSidebarModulesForTest(t, userSidebarConfig),
+	})
+	require.NoError(t, DB.Create(&user).Error)
+
+	require.NoError(t, BackfillSidebarTaskLogHiddenDefault())
+
+	var reloadedUser User
+	require.NoError(t, DB.First(&reloadedUser, user.Id).Error)
+	userSetting := reloadedUser.GetSetting()
+	sidebarConfig := decodeSidebarModulesForTest(t, userSetting.SidebarModules)
+	assert.False(t, sidebarConfig["console"]["task"])
+	assert.False(t, sidebarConfig["console"]["midjourney"])
+
+	sidebarConfig["console"]["task"] = true
+	userSetting.SidebarModules = encodeSidebarModulesForTest(t, sidebarConfig)
+	reloadedUser.SetSetting(userSetting)
+	require.NoError(t, reloadedUser.Update(false))
+
+	require.NoError(t, BackfillSidebarTaskLogHiddenDefault())
+
+	var reopenedUser User
+	require.NoError(t, DB.First(&reopenedUser, user.Id).Error)
+	reopenedSetting := reopenedUser.GetSetting()
+	reopenedConfig := decodeSidebarModulesForTest(t, reopenedSetting.SidebarModules)
+	assert.True(t, reopenedConfig["console"]["task"])
+	assert.Equal(t, sidebarTaskLogHiddenDefaultBackfillCompleted, getOptionValueForTest(t, sidebarTaskLogHiddenDefaultBackfillStatusKey))
 }
