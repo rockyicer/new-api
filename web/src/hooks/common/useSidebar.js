@@ -81,6 +81,14 @@ export const buildDefaultUserSidebarConfig = (adminConfig) => {
     adminConfig && typeof adminConfig === 'object'
       ? adminConfig
       : mergeAdminConfig(null);
+  const hiddenDefaults = {
+    chat: {
+      enabled: false,
+    },
+    console: {
+      midjourney: false,
+    },
+  };
   const defaultUserConfig = {};
 
   Object.keys(resolvedAdminConfig).forEach((sectionKey) => {
@@ -89,7 +97,7 @@ export const buildDefaultUserSidebarConfig = (adminConfig) => {
     }
 
     defaultUserConfig[sectionKey] = {
-      enabled: sectionKey === 'chat' ? false : true,
+      enabled: hiddenDefaults[sectionKey]?.enabled ?? true,
     };
 
     Object.keys(resolvedAdminConfig[sectionKey]).forEach((moduleKey) => {
@@ -97,7 +105,8 @@ export const buildDefaultUserSidebarConfig = (adminConfig) => {
         moduleKey !== 'enabled' &&
         resolvedAdminConfig[sectionKey][moduleKey]
       ) {
-        defaultUserConfig[sectionKey][moduleKey] = true;
+        defaultUserConfig[sectionKey][moduleKey] =
+          hiddenDefaults[sectionKey]?.[moduleKey] ?? true;
       }
     });
   });
