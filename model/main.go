@@ -296,6 +296,9 @@ func migrateDB() error {
 	if err := BackfillSidebarChatHiddenDefault(); err != nil {
 		return err
 	}
+	if err := BackfillSidebarDrawingLogHiddenDefault(); err != nil {
+		return err
+	}
 	return nil
 }
 
