@@ -1674,3 +1674,333 @@ bun run build
 - 已确认前端复用现有 `usage-logs` 组件，采用 `tokenPortal` 模式小步扩展。
 - 已确认顶部和登录页都要提供“API 用量查询”入口。
 - 已确认 portal 401 / 403 跳回 `/token-portal/login`，不跳回普通 `/login`。
+
+---
+
+## 11. JustAPI 品牌替换计划（待 Review）
+
+### 11.1 需求摘要
+
+- 目标：把仓库内“面向用户/运营可见”的 `New API / NewAPI / new-api` 品牌展示替换为 `JustAPI`。
+- 指定图标：使用仓库内现有的 `icon/justapi_icon.png` 作为新的默认品牌图标。
+- 本轮交付：先给出计划到 `task_plan.md` 供 review，不直接执行代码替换。
+
+### 11.2 方案对比
+
+**方案 A：仅做品牌展示层替换（推荐）**
+
+- 修改系统默认站点名、默认 logo、浏览器标题、页脚/About/Home 文案、i18n 中明确指向本产品的文案，以及 README/项目文档中的产品名称。
+- 保留 Go module path、import path、HTTP header 名、外部 `newapi` URL path、缓存命名空间等技术标识不动。
+- 优点：风险最低，能最快覆盖你截图里的站点名和头部图标。
+- 风险：仓库里仍会保留一部分技术层 `new-api` 字符串。
+
+**方案 B：品牌展示层 + 本地运维元数据一起替换**
+
+- 在方案 A 基础上，再评估 Docker service/container name、Pyroscope app name、磁盘缓存目录、update checker UA、日志前缀等本地运维字符串。
+- 优点：仓库中残留的 `new-api` 会更少。
+- 风险：可能影响现有监控、脚本、部署目录和缓存复用。
+
+**方案 C：字面意义的“全仓全替换”**
+
+- 连 `go.mod` module path、所有 Go imports、`New-API-User` header、`NewAPIError` 类型名、外部 `/api/newapi/*` 拉取地址、GitHub 仓库链接、docker image/name 等一并重命名。
+- 不推荐直接做。
+- 原因：这已经不是品牌替换，而是 fork/重命名工程，极易引入编译错误、兼容性中断和外部依赖失效。
+
+**推荐结论**
+
+- 第一阶段按方案 A 落地，先把你截图里的品牌名、默认图标、浏览器标题和主要页面文案替换成 `JustAPI`。
+- 方案 B 作为可选第二阶段，单独评审后再做。
+- 方案 C 只有在明确接受“这是仓库/模块/兼容协议层级的重命名工程”时才应启动。
+
+### 11.3 已定位的关键落点
+
+- 默认品牌源头：
+  - `common/constants.go`
+  - `model/option.go`
+  - `controller/misc.go`
+- 前端默认回退值：
+  - `web/src/helpers/utils.jsx`
+  - `web/src/helpers/data.js`
+  - `web/index.html`
+- 头部/登录/页脚展示：
+  - `web/src/components/layout/headerbar/HeaderLogo.jsx`
+  - `web/src/components/layout/PageLayout.jsx`
+  - `web/src/components/layout/Footer.jsx`
+  - `web/src/components/auth/LoginForm.jsx`
+  - `web/src/components/auth/RegisterForm.jsx`
+  - `web/src/components/auth/PasswordResetForm.jsx`
+  - `web/src/components/auth/PasswordResetConfirm.jsx`
+  - `web/src/components/auth/TokenPortalLoginForm.jsx`
+- 图标资源现状：
+  - `icon/justapi_icon.png` 已存在，但它位于仓库根目录 `icon/`，浏览器不会直接把这个目录当成前端静态资源目录。
+  - 第一阶段需要把该图标复制/落地到 `web/public/`，或把默认 logo 路径改成一个浏览器可访问的静态路径。
+- 高风险技术标识：
+  - `github.com/QuantumNous/new-api` imports / module path
+  - `New-API-User` header
+  - `NewAPIError` 类型名
+  - `/api/newapi/*` / `docs.newapi.pro` / `newapi.pro`
+  - `new-api-worker`
+  - `new-api:...` Redis namespace
+  - `new-api-body-cache` / `PYROSCOPE_APP_NAME=new-api`
+
+### Task 31: 固化第一阶段范围与残留白名单
+
+**Files:**
+- Modify: `task_plan.md`
+- Review: `common/constants.go`
+- Review: `web/src/helpers/utils.jsx`
+- Review: `web/index.html`
+- Review: `web/src/components/layout/Footer.jsx`
+
+**Step 1: 统一本次改动口径**
+
+- 第一阶段只替换“品牌展示层”的 `New API / NewAPI / new-api`。
+- 不碰 module path、imports、header、外部 API path、缓存 key、协议名和兼容名。
+
+**Step 2: 建立残留白名单**
+
+- 把允许保留的 `new-api` 分类为：
+  - 兼容协议/接口路径
+  - 第三方仓库/文档链接
+  - 监控/缓存/部署元数据
+  - 内部类型名/技术实现名
+
+**Step 3: 给 review 明确输出**
+
+- review 时只需要确认：
+  - 是否接受方案 A 作为第一阶段
+  - 是否要把方案 B 拆成第二阶段
+  - 是否真的要推进高风险的方案 C
+
+**Verification:**
+
+```powershell
+rg -n --hidden -S "new API|New API|new-api|NewAPI|newapi|New-API"
+```
+
+**Deliverables:**
+
+- 第一阶段范围定义
+- 残留 `new-api` 白名单原则
+
+### Task 32: 打通默认品牌名与默认图标链路
+
+**Files:**
+- Modify: `common/constants.go`
+- Modify: `web/src/helpers/utils.jsx`
+- Modify: `web/index.html`
+- Modify: `web/src/components/layout/PageLayout.jsx`
+- Create or Replace: `web/public/justapi_icon.png`
+
+**Step 1: 处理图标落点**
+
+- 推荐把 `icon/justapi_icon.png` 复制到 `web/public/justapi_icon.png`。
+- 不建议让前端直接引用仓库根目录的 `icon/`，因为该目录默认不会被 Vite 作为静态资源公开。
+
+**Step 2: 统一默认品牌值**
+
+- 把后端默认 `SystemName` 改成 `JustAPI`。
+- 把默认 `Logo` 或前端 fallback logo 路径指向新的静态资源。
+
+**Step 3: 统一浏览器级展示**
+
+- 更新 `web/index.html` 的默认 `<title>` 和 favicon。
+- 确保 `PageLayout` 从状态接口拿到 logo/system name 后，浏览器标题和标签页图标也同步更新。
+
+**Verification:**
+
+```powershell
+cd web
+bun run build
+```
+
+**Deliverables:**
+
+- 默认品牌名从 `New API` 切换到 `JustAPI`
+- 默认图标链路指向 `justapi_icon.png`
+
+### Task 33: 替换前端主要页面中的品牌展示文案
+
+**Files:**
+- Modify: `web/src/pages/About/index.jsx`
+- Modify: `web/src/pages/Home/index.jsx`
+- Modify: `web/src/components/layout/Footer.jsx`
+- Review: `web/src/components/layout/headerbar/HeaderLogo.jsx`
+- Review: `web/src/components/auth/LoginForm.jsx`
+- Review: `web/src/components/auth/RegisterForm.jsx`
+- Review: `web/src/components/auth/PasswordResetForm.jsx`
+- Review: `web/src/components/auth/PasswordResetConfirm.jsx`
+- Review: `web/src/components/auth/TokenPortalLoginForm.jsx`
+
+**Step 1: 替换硬编码品牌文案**
+
+- 把明确指向本站产品的 `New API / NewAPI` 文案替换为 `JustAPI`。
+- 保留 `system_name` 的动态展示机制，不要把动态品牌能力改没。
+
+**Step 2: 处理外部链接显示名**
+
+- 对 `QuantumNous/new-api`、`new-api-horizon` 等外部仓库链接，不要机械替换 URL。
+- 需要区分“链接文案要不要改”和“链接地址能不能改”这两件事。
+
+**Step 3: 对齐截图中的头部区域**
+
+- 头部品牌应通过统一的 `system_name + logo` 链路展示。
+- 登录、注册、找回密码、portal 登录页也要共享同一品牌源。
+
+**Verification:**
+
+```powershell
+rg -n "New API|NewAPI" web/src/pages/About web/src/pages/Home web/src/components/layout
+```
+
+**Deliverables:**
+
+- 头部/页脚/About/Home 主品牌文案替换完成
+- 登录相关页面默认图标与品牌名对齐
+
+### Task 34: 清理 i18n 与文档中的产品自指文案
+
+**Files:**
+- Modify: `web/src/i18n/locales/zh-CN.json`
+- Modify: `web/src/i18n/locales/zh-TW.json`
+- Modify: `web/src/i18n/locales/en.json`
+- Modify: `web/src/i18n/locales/fr.json`
+- Modify: `web/src/i18n/locales/ru.json`
+- Modify: `web/src/i18n/locales/ja.json`
+- Modify: `web/src/i18n/locales/vi.json`
+- Review: `README.md`
+- Review: `docs/**/*.md`
+
+**Step 1: 只改“明确是在说本产品”的文案**
+
+- 例如站点介绍、仓库说明、页脚署名、产品说明等。
+
+**Step 2: 标记歧义项**
+
+- 以下类型不要直接批量替换，必须人工判断：
+  - “如果上游是 New API”
+  - `new-api-worker`
+  - `docs.newapi.pro`
+  - `https://newapi.pro`
+  - `new-api` 作为兼容格式/生态名称出现的地方
+
+**Step 3: 文档链接分离处理**
+
+- 如果 JustAPI 的官网/文档/仓库地址尚未准备好，第一阶段只改显示文案，不虚构新的 URL。
+
+**Verification:**
+
+```powershell
+rg -n --glob "web/src/i18n/locales/*.json" --glob "docs/**/*.md" --glob "README*" -S "New API|NewAPI|new-api|newapi"
+```
+
+**Deliverables:**
+
+- 已确认可替换的文案清单
+- 需要保留或二次确认的歧义清单
+
+### Task 35: 评审第二阶段可选的运维/元数据替换
+
+**Files:**
+- Review: `.env.example`
+- Review: `docker-compose.yml`
+- Review: `Dockerfile`
+- Review: `common/init.go`
+- Review: `common/pyro.go`
+- Review: `common/disk_cache.go`
+- Review: `model/subscription.go`
+- Review: `web/src/helpers/api.js`
+- Review: `web/src/components/settings/OtherSetting.jsx`
+- Review: `controller/topup_stripe.go`
+
+**Step 1: 识别这类字符串是否会影响兼容性**
+
+- 例如：
+  - `new-api` 目录名
+  - `new-api` container/service name
+  - `new-api-update-checker`
+  - `new-api:subscription_plan:v1`
+  - `new-api-body-cache`
+
+**Step 2: 给每类项做三分法决策**
+
+- 立即替换
+- 延后到第二阶段
+- 永久保留为兼容标识
+
+**Step 3: 若决定替换，先补迁移说明**
+
+- 明确缓存失效、监控名称变更、部署脚本调整和回滚方式。
+
+**Verification:**
+
+```powershell
+rg -n --hidden -S "new-api|NewAPI|New-API" .env.example docker-compose.yml Dockerfile common model web/src/helpers/api.js web/src/components/settings/OtherSetting.jsx controller/topup_stripe.go
+```
+
+**Deliverables:**
+
+- 第二阶段候选项清单
+- 每项的风险判断与迁移说明需求
+
+### Task 36: 联调验证与验收口径
+
+**Files:**
+- Review: `common/constants.go`
+- Review: `web/index.html`
+- Review: `web/src/helpers/utils.jsx`
+- Review: `web/src/components/layout/PageLayout.jsx`
+- Review: `web/src/components/layout/Footer.jsx`
+- Review: `web/src/pages/About/index.jsx`
+- Review: `web/src/pages/Home/index.jsx`
+
+**Step 1: 后端编译/测试验证**
+
+```powershell
+go test ./...
+```
+
+**Step 2: 前端构建验证**
+
+```powershell
+cd web
+bun run build
+```
+
+**Step 3: 手工验收**
+
+- 打开首页，确认头部品牌名显示为 `JustAPI`
+- 头部 logo、登录页 logo、页脚 logo、浏览器标签页图标一致
+- `About`、`Home`、页脚中的本站品牌文案完成替换
+- 不应误改外部链接地址、兼容协议名或内部技术标识
+
+**Step 4: 残留检索**
+
+```powershell
+rg -n --hidden -S "New API|NewAPI|new-api|newapi|New-API"
+```
+
+- 预期：剩余命中只来自白名单中的技术/兼容/外部引用。
+
+**Deliverables:**
+
+- 构建通过记录
+- 手工验收清单
+- 残留命中与白名单对照结果
+
+### 11.4 待你 review 的关键决策
+
+- 是否确认按“方案 A 先落地，方案 B 另开评审”的节奏执行。
+- `docs.newapi.pro`、GitHub 仓库链接、`new-api-worker` 这类生态/兼容标识是否先保留。
+- 对外显示文案和对外链接地址是否允许分阶段处理：
+  - 第一阶段只改显示名为 `JustAPI`
+  - 第二阶段在新域名/新仓库准备好后再改 URL
+
+### 11.5 执行决议（2026-03-31）
+
+- 已确认立即执行：**方案 A：仅做品牌展示层替换**。
+- 已确认暂不执行：方案 B、方案 C；两者保留在本计划中，后续按需要单独启动。
+- 执行要求：
+  - 严格按方案 A 范围落地；
+  - 自行迭代，不中途暂停等待 review；
+  - 每个子任务完成后单独提交一次 commit。
