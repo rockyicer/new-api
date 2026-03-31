@@ -187,7 +187,7 @@ const Contact = () => {
                 <div className='mt-6'>
                   {group.image ? (
                     <div
-                      className='overflow-hidden rounded-[24px] border p-4'
+                      className='flex min-h-[420px] items-center justify-center rounded-[24px] border p-4 md:min-h-[480px]'
                       style={{
                         background: 'var(--semi-color-bg-1)',
                         borderColor: 'var(--semi-color-border)',
@@ -196,7 +196,7 @@ const Contact = () => {
                       <img
                         src={group.image}
                         alt={group.imageAlt}
-                        className='aspect-square w-full rounded-[18px] object-cover'
+                        className='max-h-[440px] w-full rounded-[18px] object-contain md:max-h-[500px]'
                       />
                     </div>
                   ) : (
