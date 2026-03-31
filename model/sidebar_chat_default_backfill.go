@@ -21,7 +21,7 @@ func BackfillSidebarChatHiddenDefault() error {
 	if err != nil {
 		return err
 	}
-	if status == sidebarDrawingLogHiddenDefaultBackfillCompleted {
+	if status == sidebarChatHiddenDefaultBackfillStatusCompleted {
 		return nil
 	}
 
@@ -64,7 +64,7 @@ func backfillUserSidebarChatHiddenDefault(user *User) (bool, error) {
 	if err = DB.Model(&User{}).Where("id = ?", user.Id).Update("setting", user.Setting).Error; err != nil {
 		return false, err
 	}
-	if err = updateUserCache(*user); err != nil {
+	if err = updateSidebarBackfillUserCache(*user); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -179,7 +179,7 @@ func BackfillSidebarDrawingLogHiddenDefault() error {
 	if err != nil {
 		return err
 	}
-	if status == sidebarChatHiddenDefaultBackfillStatusCompleted {
+	if status == sidebarDrawingLogHiddenDefaultBackfillCompleted {
 		return nil
 	}
 
@@ -222,7 +222,7 @@ func backfillUserSidebarDrawingLogHiddenDefault(user *User) (bool, error) {
 	if err = DB.Model(&User{}).Where("id = ?", user.Id).Update("setting", user.Setting).Error; err != nil {
 		return false, err
 	}
-	if err = updateUserCache(*user); err != nil {
+	if err = updateSidebarBackfillUserCache(*user); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -283,4 +283,11 @@ func getSidebarDrawingLogHiddenDefaultBackfillStatus() (string, error) {
 		return "", nil
 	}
 	return option.Value, nil
+}
+
+func updateSidebarBackfillUserCache(user User) error {
+	if !common.RedisEnabled || common.RDB == nil {
+		return nil
+	}
+	return updateUserCache(user)
 }
