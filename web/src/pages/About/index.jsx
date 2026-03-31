@@ -71,9 +71,9 @@ const About = () => {
             >
               <div className='flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between'>
                 <div className='max-w-3xl'>
-                  <div className='flex items-start gap-6 md:gap-8'>
+                  <div className='flex items-center gap-8 md:gap-10'>
                     <div
-                      className='flex h-20 w-20 shrink-0 items-center justify-center rounded-[28px] border md:h-24 md:w-24'
+                      className='flex h-28 w-28 shrink-0 items-center justify-center rounded-[36px] border md:h-36 md:w-36'
                       style={{
                         background: 'var(--semi-color-bg-1)',
                         borderColor: 'var(--semi-color-border)',
@@ -82,10 +82,10 @@ const About = () => {
                       <img
                         src={logo}
                         alt={systemName}
-                        className='h-12 w-12 object-contain md:h-14 md:w-14'
+                        className='h-16 w-16 object-contain md:h-[84px] md:w-[84px]'
                       />
                     </div>
-                    <div className='pt-1 md:pt-2'>
+                    <div>
                       <div className='text-xs font-semibold uppercase tracking-[0.32em] text-semi-color-text-2'>
                         {systemName}
                       </div>
