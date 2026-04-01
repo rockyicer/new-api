@@ -102,6 +102,7 @@ const REGION_EXAMPLE = {
   'claude-3-5-sonnet-20240620': 'europe-west1',
 };
 const UPSTREAM_DETECTED_MODEL_PREVIEW_LIMIT = 8;
+const ADVANCED_SETTINGS_EXPANDED_KEY = 'channel-advanced-settings-expanded';
 
 const PARAM_OVERRIDE_LEGACY_TEMPLATE = {
   temperature: 0,
@@ -417,6 +418,10 @@ const EditChannelModal = (props) => {
 
   // 高级设置折叠状态
   const [advancedSettingsOpen, setAdvancedSettingsOpen] = useState(false);
+  const toggleAdvancedSettings = (open) => {
+    setAdvancedSettingsOpen(open);
+    localStorage.setItem(ADVANCED_SETTINGS_EXPANDED_KEY, String(open));
+  };
   const formContainerRef = useRef(null);
   const doubaoApiClickCountRef = useRef(0);
   const initialModelsRef = useRef([]);
@@ -1336,6 +1341,10 @@ const EditChannelModal = (props) => {
       setUseManualInput(false);
       // 重置导航状态
       setCurrentSectionIndex(0);
+      // 编辑模式下恢复用户偏好，创建模式一律折叠
+      setAdvancedSettingsOpen(
+        isEdit && localStorage.getItem(ADVANCED_SETTINGS_EXPANDED_KEY) === 'true'
+      );
     } else {
       // 统一的模态框关闭重置逻辑
       resetModalState();
@@ -3341,6 +3350,7 @@ const EditChannelModal = (props) => {
                       }
                     />
 
+<<<<<<< HEAD
                     <Form.Input
                       field='custom_model'
                       label={t('自定义模型名称')}
@@ -3349,6 +3359,201 @@ const EditChannelModal = (props) => {
                       value={customModel}
                       suffix={
                         <Button
+=======
+                  {/* Custom Model Name - Core Config */}
+                  <Form.Input
+                    field='custom_model'
+                    label={t('自定义模型名称')}
+                    placeholder={t('输入自定义模型名称')}
+                    onChange={(value) => setCustomModel(value.trim())}
+                    value={customModel}
+                    suffix={
+                      <Button
+                        size='small'
+                        type='primary'
+                        onClick={addCustomModels}
+                      >
+                        {t('填入')}
+                      </Button>
+                    }
+                  />
+
+                  {/* Groups - Core Config */}
+                  <Form.Select
+                    field='groups'
+                    label={t('分组')}
+                    placeholder={t('请选择可以使用该渠道的分组')}
+                    multiple
+                    allowAdditions
+                    additionLabel={t(
+                      '请在系统设置页面编辑分组倍率以添加新的分组：',
+                    )}
+                    optionList={groupOptions}
+                    style={{ width: '100%' }}
+                    position='top'
+                    onChange={(value) => handleInputChange('groups', value)}
+                  />
+
+                  {/* Model Mapping - Core Config */}
+                  <JSONEditor
+                    key={`model_mapping-${isEdit ? channelId : 'new'}`}
+                    field='model_mapping'
+                    label={t('模型重定向')}
+                    placeholder={
+                      t(
+                        '此项可选，用于修改请求体中的模型名称，为一个 JSON 字符串，键为请求中模型名称，值为要替换的模型名称，例如：',
+                      ) +
+                      `\n${JSON.stringify(MODEL_MAPPING_EXAMPLE, null, 2)}`
+                    }
+                    value={inputs.model_mapping || ''}
+                    onChange={(value) =>
+                      handleInputChange('model_mapping', value)
+                    }
+                    template={MODEL_MAPPING_EXAMPLE}
+                    templateLabel={t('填入模板')}
+                    editorType='keyValue'
+                    formApi={formApiRef.current}
+                    renderStringValueSuffix={({ pairKey, value }) => {
+                      if (!MODEL_FETCHABLE_CHANNEL_TYPES.has(inputs.type)) {
+                        return null;
+                      }
+                      const disabled = !String(pairKey ?? '').trim();
+                      return (
+                        <Tooltip content={t('选择模型')}>
+                          <Button
+                            type='tertiary'
+                            theme='borderless'
+                            size='small'
+                            icon={<IconSearch size={14} />}
+                            disabled={disabled}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openModelMappingValueModal({ pairKey, value });
+                            }}
+                          />
+                        </Tooltip>
+                      );
+                    }}
+                    extraText={t(
+                      '键为请求中的模型名称，值为要替换的模型名称',
+                    )}
+                  />
+
+                  {/* Auto Ban - Core Config */}
+                  <Form.Switch
+                    field='auto_ban'
+                    label={t('是否自动禁用')}
+                    checkedText={t('开')}
+                    uncheckedText={t('关')}
+                    onChange={(value) => setAutoBan(value)}
+                    extraText={t(
+                      '仅当自动禁用开启时有效，关闭后不会自动禁用该渠道',
+                    )}
+                    initValue={autoBan}
+                  />
+
+                  {/* Test Model - Core Config */}
+                  <Form.Input
+                    field='test_model'
+                    label={t('默认测试模型')}
+                    placeholder={t('不填则为模型列表第一个')}
+                    onChange={(value) =>
+                      handleInputChange('test_model', value)
+                    }
+                    showClear
+                  />
+                </Card>
+
+                {/* Advanced Settings Toggle / Collapse */}
+                {isMobile ? (
+                <Collapse
+                  activeKey={advancedSettingsOpen ? ['advanced'] : []}
+                  onChange={(keys) => toggleAdvancedSettings(keys.includes('advanced'))}
+                >
+                  <Collapse.Panel
+                    header={
+                      <div className='flex items-center gap-2'>
+                        <IconSetting size={16} />
+                        <Text className='font-medium'>{t('高级设置')}</Text>
+                      </div>
+                    }
+                    itemKey='advanced'
+                  >
+                    {advancedSettingsContent}
+                  </Collapse.Panel>
+                </Collapse>
+                ) : (
+                  /* Desktop: toggle button to open side panel */
+                  <div
+                    className='flex items-center justify-between p-3 rounded-xl cursor-pointer transition-colors hover:bg-gray-50'
+                    style={{
+                      backgroundColor: advancedSettingsOpen ? 'var(--semi-color-primary-light-default)' : 'var(--semi-color-fill-0)',
+                      border: '1px solid var(--semi-color-fill-2)',
+                    }}
+                    onClick={() => toggleAdvancedSettings(!advancedSettingsOpen)}
+                  >
+                    <div className='flex items-center gap-2'>
+                      <IconSetting size={16} />
+                      <Text className='font-medium'>{t('高级设置')}</Text>
+                    </div>
+                    <div className='flex items-center gap-1 text-sm' style={{ color: 'var(--semi-color-primary)' }}>
+                      <Text size='small' style={{ color: 'var(--semi-color-primary)' }}>
+                        {advancedSettingsOpen ? t('收起') : isEdit ? t('向左展开') : t('向右展开')}
+                      </Text>
+                      <IconChevronDown
+                        size={14}
+                        style={{
+                          transform: advancedSettingsOpen
+                            ? 'rotate(180deg)'
+                            : isEdit ? 'rotate(90deg)' : 'rotate(-90deg)',
+                          transition: 'transform 0.2s',
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Spin>
+
+            {/* Desktop: Advanced Settings Side Panel - rendered inside Form tree */}
+            {!isMobile && advancedSettingsOpen && (
+              <div
+                className='fixed top-0 h-full overflow-y-auto z-[999] semi-sidesheet-inner'
+                style={{
+                  width: 600,
+                  [isEdit ? 'right' : 'left']: 600,
+                  backgroundColor: 'var(--semi-color-bg-0)',
+                  borderLeft: isEdit ? 'none' : '1px solid var(--semi-color-border)',
+                  borderRight: isEdit ? '1px solid var(--semi-color-border)' : 'none',
+                  animation: `slideIn${isEdit ? 'Left' : 'Right'} 0.3s ease-out`,
+                }}
+              >
+                <div className='semi-sidesheet-header'>
+                  <div className='semi-sidesheet-title'>
+                    <Space>
+                      <Tag color='cyan' shape='circle'>
+                        {t('高级')}
+                      </Tag>
+                      <Title heading={4} className='m-0'>
+                        {t('高级设置')}
+                      </Title>
+                    </Space>
+                  </div>
+                  <Button
+                    className='semi-sidesheet-close'
+                    type='tertiary'
+                    theme='borderless'
+                    icon={<IconClose />}
+                    size='small'
+                    onClick={() => setAdvancedSettingsOpen(false)}
+                  />
+                </div>
+                <div className='semi-sidesheet-body' style={{ padding: 0 }}>
+                  <div className='p-2 space-y-3'>
+                    <Card className='!rounded-2xl shadow-sm border-0'>
+                      <div className='flex items-center mb-4'>
+                        <Avatar
+>>>>>>> a706f002 (feat(EditChannelModal): persist advanced settings state in local storage)
                           size='small'
                           type='primary'
                           onClick={addCustomModels}
