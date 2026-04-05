@@ -31,4 +31,3 @@ export * from './boolean';
 export * from './dashboard';
 export * from './passkey';
 export * from './statusCodeRules';
-export * from './playgroundMaxTokens';
