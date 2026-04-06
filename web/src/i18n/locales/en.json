@@ -3422,6 +3422,8 @@
     "API 密钥无效": "Invalid API Key",
     "请输入 API 密钥": "Please enter the API key",
     "只需输入一次完整的 API 密钥，后续查询将使用只读会话。": "Enter the full API key once. Subsequent lookups will use a read-only session.",
-    "未启用": "Disabled"
+    "未启用": "Disabled",
+    "页面渲染出错，请刷新页面重试": "An error occurred while rendering the page. Please refresh and try again.",
+    "刷新页面": "Reload Page"
   }
 }

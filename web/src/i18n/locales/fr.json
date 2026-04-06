@@ -3343,6 +3343,8 @@
     "API 密钥无效": "Clé API invalide",
     "请输入 API 密钥": "Veuillez saisir la clé API",
     "只需输入一次完整的 API 密钥，后续查询将使用只读会话。": "Saisissez la clé API complète une seule fois. Les consultations suivantes utiliseront une session en lecture seule.",
-    "未启用": "Disabled"
+    "未启用": "Disabled",
+    "页面渲染出错，请刷新页面重试": "Une erreur est survenue lors du rendu de la page. Veuillez rafraîchir et réessayer.",
+    "刷新页面": "Recharger la page"
   }
 }
