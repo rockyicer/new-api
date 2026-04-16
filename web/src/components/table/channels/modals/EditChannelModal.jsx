@@ -65,6 +65,7 @@ import SecureVerificationModal from '../../../common/modals/SecureVerificationMo
 import StatusCodeRiskGuardModal from './StatusCodeRiskGuardModal';
 import ChannelKeyDisplay from '../../../common/ui/ChannelKeyDisplay';
 import { useSecureVerification } from '../../../../hooks/common/useSecureVerification';
+import { parseChannelConnectionString } from '../../../../helpers/token';
 import { createApiCalls } from '../../../../services/secureVerification';
 import {
   collectInvalidStatusCodeEntries,
@@ -411,6 +412,11 @@ const EditChannelModal = (props) => {
     'advancedSettings',
     'channelExtraSettings',
   ];
+  // 剪贴板连接信息自动检测
+  const [clipboardConfig, setClipboardConfig] = useState(null);
+
+  // 高级设置折叠状态
+  const [advancedSettingsOpen, setAdvancedSettingsOpen] = useState(false);
   const formContainerRef = useRef(null);
   const doubaoApiClickCountRef = useRef(0);
   const initialModelsRef = useRef([]);
@@ -572,6 +578,39 @@ const EditChannelModal = (props) => {
     settings[key] = value;
     const settingsJson = JSON.stringify(settings);
     handleInputChange('settings', settingsJson);
+  };
+
+  const applyClipboardConfig = (config) => {
+    if (!config) return;
+    setInputs((prev) => ({
+      ...prev,
+      key: config.key,
+      base_url: config.url,
+    }));
+    if (formApiRef.current) {
+      formApiRef.current.setValue('key', config.key);
+      formApiRef.current.setValue('base_url', config.url);
+    }
+    setClipboardConfig(null);
+    showSuccess(t('连接信息已填入'));
+  };
+
+  const pasteFromClipboard = async () => {
+    if (!navigator?.clipboard?.readText) {
+      showError(t('无法读取剪贴板'));
+      return;
+    }
+    try {
+      const text = await navigator.clipboard.readText();
+      const parsed = parseChannelConnectionString(text);
+      if (parsed) {
+        applyClipboardConfig(parsed);
+      } else {
+        showInfo(t('剪贴板中未检测到连接信息'));
+      }
+    } catch {
+      showError(t('无法读取剪贴板'));
+    }
   };
 
   const isIonetLocked = isIonetChannel && isEdit;
@@ -1283,6 +1322,14 @@ const EditChannelModal = (props) => {
         loadChannel();
       } else {
         formApiRef.current?.setValues(getInitValues());
+        try {
+          navigator?.clipboard?.readText()?.then((text) => {
+            const parsed = parseChannelConnectionString(text);
+            if (parsed) {
+              setClipboardConfig(parsed);
+            }
+          }).catch(() => {});
+        } catch {}
       }
       fetchModelGroups();
       // 重置手动输入模式状态
@@ -1341,6 +1388,8 @@ const EditChannelModal = (props) => {
     setInputs(getInitValues());
     // 重置密钥显示状态
     resetKeyDisplayState();
+    // 重置剪贴板检测状态
+    setClipboardConfig(null);
   };
 
   const handleVertexUploadChange = ({ fileList }) => {
@@ -2089,14 +2138,27 @@ const EditChannelModal = (props) => {
       <SideSheet
         placement={isEdit ? 'right' : 'left'}
         title={
-          <Space>
-            <Tag color='blue' shape='circle'>
-              {isEdit ? t('编辑') : t('新建')}
-            </Tag>
-            <Title heading={4} className='m-0'>
-              {isEdit ? t('更新渠道信息') : t('创建新的渠道')}
-            </Title>
-          </Space>
+          <div className='flex items-center justify-between w-full'>
+            <Space>
+              <Tag color='blue' shape='circle'>
+                {isEdit ? t('编辑') : t('新建')}
+              </Tag>
+              <Title heading={4} className='m-0'>
+                {isEdit ? t('更新渠道信息') : t('创建新的渠道')}
+              </Title>
+            </Space>
+            {!isEdit && (
+              <Button
+                size='small'
+                type='tertiary'
+                className='ec-dbcd0a3c01b55203 shrink-0'
+                icon={<IconBolt />}
+                onClick={pasteFromClipboard}
+              >
+                {t('从剪贴板粘贴配置')}
+              </Button>
+            )}
+          </div>
         }
         bodyStyle={{ padding: '0' }}
         visible={props.visible}
@@ -2168,6 +2230,34 @@ const EditChannelModal = (props) => {
           {() => (
             <Spin spinning={loading}>
               <div className='p-2 space-y-3' ref={formContainerRef}>
+                {!isEdit && clipboardConfig && (
+                  <Banner
+                    type='info'
+                    className='ec-dbcd0a3c01b55203'
+                    description={
+                      <div className='flex items-center justify-between gap-2'>
+                        <span>{t('检测到剪贴板中的连接信息')}</span>
+                        <div className='flex gap-1'>
+                          <Button
+                            size='small'
+                            theme='solid'
+                            type='primary'
+                            onClick={() => applyClipboardConfig(clipboardConfig)}
+                          >
+                            {t('自动填入')}
+                          </Button>
+                          <Button
+                            size='small'
+                            type='tertiary'
+                            onClick={() => setClipboardConfig(null)}
+                          >
+                            {t('忽略')}
+                          </Button>
+                        </div>
+                      </div>
+                    }
+                  />
+                )}
                 <div ref={(el) => (formSectionRefs.current.basicInfo = el)}>
                   <Card className='!rounded-2xl shadow-sm border-0 mb-6'>
                     {/* Header: Basic Info */}
@@ -3294,7 +3384,12 @@ const EditChannelModal = (props) => {
                         <Form.Input
                           field='upstream_model_update_ignored_models'
                           label={t('已忽略模型')}
-                          placeholder={t('例如：gpt-4.1-nano,gpt-4o-mini')}
+                          placeholder={t(
+                            '例如：gpt-4.1-nano,regex:^claude-.*$,regex:^sora-.*$',
+                          )}
+                          extraText={t(
+                            '支持精确匹配；使用 regex: 开头可按正则匹配。',
+                          )}
                           onChange={(value) =>
                             handleInputChange(
                               'upstream_model_update_ignored_models',
