@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState, useEffect, useMemo, useContext, useRef } from 'react';
 import { StatusContext } from '../../context/Status';
 import { API } from '../../helpers';
+import { buildFinalSidebarConfig } from '../../helpers/sidebar-config';
 
 // 创建一个全局事件系统来同步所有useSidebar实例
 const sidebarEventTarget = new EventTarget();
@@ -81,15 +82,6 @@ export const buildDefaultUserSidebarConfig = (adminConfig) => {
     adminConfig && typeof adminConfig === 'object'
       ? adminConfig
       : mergeAdminConfig(null);
-  const hiddenDefaults = {
-    chat: {
-      enabled: false,
-    },
-    console: {
-      midjourney: false,
-      task: false,
-    },
-  };
   const defaultUserConfig = {};
 
   Object.keys(resolvedAdminConfig).forEach((sectionKey) => {
@@ -98,7 +90,7 @@ export const buildDefaultUserSidebarConfig = (adminConfig) => {
     }
 
     defaultUserConfig[sectionKey] = {
-      enabled: hiddenDefaults[sectionKey]?.enabled ?? true,
+      enabled: true,
     };
 
     Object.keys(resolvedAdminConfig[sectionKey]).forEach((moduleKey) => {
@@ -106,8 +98,7 @@ export const buildDefaultUserSidebarConfig = (adminConfig) => {
         moduleKey !== 'enabled' &&
         resolvedAdminConfig[sectionKey][moduleKey]
       ) {
-        defaultUserConfig[sectionKey][moduleKey] =
-          hiddenDefaults[sectionKey]?.[moduleKey] ?? true;
+        defaultUserConfig[sectionKey][moduleKey] = true;
       }
     });
   });
@@ -223,50 +214,15 @@ export const useSidebar = () => {
 
   // 计算最终的显示配置
   const finalConfig = useMemo(() => {
-    const result = {};
-
-    // 确保adminConfig已加载
     if (!adminConfig || Object.keys(adminConfig).length === 0) {
-      return result;
+      return {};
     }
 
-    // 如果userConfig未加载，等待加载完成
     if (!userConfig) {
-      return result;
+      return {};
     }
 
-    // 遍历所有区域
-    Object.keys(adminConfig).forEach((sectionKey) => {
-      const adminSection = adminConfig[sectionKey];
-      const userSection = userConfig[sectionKey];
-
-      // 如果管理员禁用了整个区域，则该区域不显示
-      if (!adminSection?.enabled) {
-        result[sectionKey] = { enabled: false };
-        return;
-      }
-
-      // 区域级别：用户可以选择隐藏管理员允许的区域
-      // 当userSection存在时检查enabled状态，否则默认为true
-      const sectionEnabled = userSection ? userSection.enabled !== false : true;
-      result[sectionKey] = { enabled: sectionEnabled };
-
-      // 功能级别：只有管理员和用户都允许的功能才显示
-      Object.keys(adminSection).forEach((moduleKey) => {
-        if (moduleKey === 'enabled') return;
-
-        const adminAllowed = adminSection[moduleKey];
-        // 当userSection存在时检查模块状态，否则默认为true
-        const userAllowed = userSection
-          ? userSection[moduleKey] !== false
-          : true;
-
-        result[sectionKey][moduleKey] =
-          adminAllowed && userAllowed && sectionEnabled;
-      });
-    });
-
-    return result;
+    return buildFinalSidebarConfig(adminConfig, userConfig);
   }, [adminConfig, userConfig]);
 
   // 检查特定功能是否应该显示

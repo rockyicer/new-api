@@ -49,6 +49,15 @@ import {
   mergeAdminConfig,
   useSidebar,
 } from '../../../../hooks/common/useSidebar';
+import {
+  filterUserEditableSidebarSections,
+  stripAdminOnlySectionsFromUserSidebarConfig,
+} from '../../../../helpers/sidebar-config';
+
+const buildEditableSidebarModulesState = (adminConfig) =>
+  stripAdminOnlySectionsFromUserSidebarConfig(
+    buildDefaultUserSidebarConfig(adminConfig),
+  );
 
 const NotificationSettings = ({
   t,
@@ -65,7 +74,7 @@ const NotificationSettings = ({
   const [sidebarLoading, setSidebarLoading] = useState(false);
   const [activeTabKey, setActiveTabKey] = useState('notification');
   const [sidebarModulesUser, setSidebarModulesUser] = useState(() =>
-    buildDefaultUserSidebarConfig(mergeAdminConfig(null)),
+    buildEditableSidebarModulesState(mergeAdminConfig(null)),
   );
   const [adminConfig, setAdminConfig] = useState(null);
 
@@ -87,7 +96,7 @@ const NotificationSettings = ({
       const newModules = {
         ...sidebarModulesUser,
         [sectionKey]: {
-          ...sidebarModulesUser[sectionKey],
+          ...(sidebarModulesUser[sectionKey] || {}),
           enabled: checked,
         },
       };
@@ -100,7 +109,8 @@ const NotificationSettings = ({
       const newModules = {
         ...sidebarModulesUser,
         [sectionKey]: {
-          ...sidebarModulesUser[sectionKey],
+          ...(sidebarModulesUser[sectionKey] || {}),
+          enabled: sidebarModulesUser[sectionKey]?.enabled !== false,
           [moduleKey]: checked,
         },
       };
@@ -110,11 +120,14 @@ const NotificationSettings = ({
 
   const saveSidebarSettings = async () => {
     setSidebarLoading(true);
+    const sanitizedSidebarModulesUser =
+      stripAdminOnlySectionsFromUserSidebarConfig(sidebarModulesUser);
     try {
       const res = await API.put('/api/user/self', {
-        sidebar_modules: JSON.stringify(sidebarModulesUser),
+        sidebar_modules: JSON.stringify(sanitizedSidebarModulesUser),
       });
       if (res.data.success) {
+        setSidebarModulesUser(sanitizedSidebarModulesUser);
         showSuccess(t('侧边栏设置保存成功'));
 
         // 刷新useSidebar钩子中的用户配置，实现实时更新
@@ -130,7 +143,7 @@ const NotificationSettings = ({
 
   const resetSidebarModules = () => {
     setSidebarModulesUser(
-      buildDefaultUserSidebarConfig(adminConfig || mergeAdminConfig(null)),
+      buildEditableSidebarModulesState(adminConfig || mergeAdminConfig(null)),
     );
   };
 
@@ -162,15 +175,19 @@ const NotificationSettings = ({
           } else {
             userConf = userRes.data.data.sidebar_modules;
           }
-          setSidebarModulesUser(userConf);
+          setSidebarModulesUser(
+            stripAdminOnlySectionsFromUserSidebarConfig(userConf),
+          );
         } else {
           setSidebarModulesUser(
-            buildDefaultUserSidebarConfig(resolvedAdminConfig),
+            buildEditableSidebarModulesState(resolvedAdminConfig),
           );
         }
       } catch (error) {
         console.error('加载边栏配置失败:', error);
-        setSidebarModulesUser(buildDefaultUserSidebarConfig(resolvedAdminConfig));
+        setSidebarModulesUser(
+          buildEditableSidebarModulesState(resolvedAdminConfig),
+        );
       }
     };
 
@@ -203,7 +220,7 @@ const NotificationSettings = ({
   };
 
   // 区域配置数据（根据权限过滤）
-  const sectionConfigs = [
+  const sectionConfigs = filterUserEditableSidebarSections([
     {
       key: 'chat',
       title: t('聊天区域'),
@@ -277,7 +294,7 @@ const NotificationSettings = ({
         },
       ],
     },
-  ]
+  ])
     .filter((section) => {
       // 使用后端权限验证替代前端角色判断
       return isSidebarSectionAllowed(section.key);
@@ -293,6 +310,8 @@ const NotificationSettings = ({
         // 过滤掉没有可用模块的区域
         section.modules.length > 0 && isAllowedByAdmin(section.key),
     );
+  const showSidebarSettingsTab =
+    hasSidebarSettingsPermission() && sectionConfigs.length > 0;
 
   // 表单提交
   const handleSubmit = () => {
@@ -316,7 +335,7 @@ const NotificationSettings = ({
       className='!rounded-2xl shadow-sm border-0'
       footer={
         <div className='flex justify-end gap-3'>
-          {activeTabKey === 'sidebar' ? (
+          {showSidebarSettingsTab && activeTabKey === 'sidebar' ? (
             // 边栏设置标签页的按钮
             <>
               <Button
@@ -758,7 +777,7 @@ const NotificationSettings = ({
             </TabPane>
 
             {/* 左侧边栏设置 Tab - 根据后端权限控制显示 */}
-            {hasSidebarSettingsPermission() && (
+            {showSidebarSettingsTab && (
               <TabPane
                 tab={
                   <div className='flex items-center'>

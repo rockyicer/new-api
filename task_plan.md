@@ -2022,3 +2022,258 @@ rg -n --hidden -S "New API|NewAPI|new-api|newapi|New-API"
   - 仓库 URL、镜像名、Docker container/service name、`docs.newapi.pro`、`new-api-worker`、`new-api-update-checker`、`/var/cache/new-api`、`/llm-metadata/api/newapi/*`
   - 兼容性提示文案中把 `New API` 作为“上游转发项目名”出现的语句
 - 后续若启动方案 B / C，再单独评审这些运维/兼容性标识的替换策略。
+
+## 12. 侧边栏默认隐藏切换为管理员纯控制（2026-04-16）
+
+### 12.1 已确认范围
+
+- 目标行为：管理员在全局侧边栏配置里打开 `chat`、`console.midjourney`、`console.task` 后，刷新页面即可显示对应 Tab，不再被旧的“默认隐藏”逻辑拦住。
+- 不再保留以下硬编码默认隐藏：
+  - 后端新用户默认 `chat.enabled=false`
+  - 后端新用户默认 `console.midjourney=false`
+  - 后端新用户默认 `console.task=false`
+  - 前端无用户配置时的 `hiddenDefaults`
+- 保留现有两层配置体系：
+  - 管理员全局 `SidebarModulesAdmin` 作为可见性上限
+  - 用户个人 `sidebar_modules` 作为个人偏好存储
+- 为了消除历史脏数据，需要补一次性清理迁移，把旧版本硬编码写入的 `false` 恢复为可显示状态；迁移仅执行一次，避免持续覆盖用户后续新选择。
+
+### 12.2 方案比较
+
+- 方案 A：只删除前后端默认隐藏代码，不处理历史用户数据。
+  - 优点：改动最小。
+  - 缺点：历史用户数据库里已经写入的 `false` 仍会继续阻塞显示，无法满足“管理员开了就能显示”。
+- 方案 B：删除默认隐藏代码，并增加一次性历史清理迁移。
+  - 优点：能同时修复新用户默认值和历史用户遗留配置，满足本轮目标。
+  - 缺点：需要维护一次性迁移测试和状态位。
+- 方案 C：改成管理员配置直接覆盖用户层，对这几个模块忽略用户个人配置。
+  - 优点：管理员开关一开必定显示。
+  - 缺点：会改变“个人边栏设置”语义，侵入性更强，也不必要。
+
+### 12.3 执行决议
+
+- 本轮采用方案 B。
+- 设计假设：
+  - 旧版本写入的 `chat.enabled=false`、`console.midjourney=false`、`console.task=false` 属于需要清理的历史默认值；
+  - 迁移完成后，用户如果再次手动关闭这些项，后续不会被重复打开。
+
+### Step-01: 固化新行为并先写失败测试
+
+**Status:** Done
+
+**AC:**
+
+- 新的默认侧边栏配置不再强制隐藏 `chat`、`midjourney`、`task`。
+- 存量用户若因旧逻辑被写入上述隐藏值，一次性迁移会将其恢复为可显示。
+- 一次性迁移执行完成后，不会在后续重复覆盖用户新修改。
+
+**Verification:**
+
+```powershell
+go test ./model -run 'TestGenerateDefaultSidebarConfigForRole_UsesVisibleDefaults|TestBackfillSidebarLegacyVisibleDefaults_UpdatesExistingUsersOnce' -count=1
+```
+
+**Deliverables:**
+
+- 更新后的模型级失败测试
+- 与本轮目标一致的默认值断言
+- 一次性历史清理迁移断言
+
+**Iteration Log:**
+
+- Attempt-1 (2026-04-16): 先把“默认值改为可见”和“历史遗留 false 一次性清理”的行为写成失败测试，再进入实现。
+- Result (2026-04-16): `go test ./model -run 'TestGenerateDefaultSidebarConfigForRole_UsesVisibleDefaults|TestBackfillSidebarLegacyVisibleDefaults_UpdatesExistingUsersOnce' -count=1` 先在旧实现上按预期 red，失败点为缺少 `BackfillSidebarLegacyVisibleDefaults` 与对应状态常量。
+
+### Step-02: 调整后端默认值与历史清理迁移
+
+**Status:** Done
+
+**AC:**
+
+- 新用户初始化侧边栏配置时，不再写入 `chat=false`、`midjourney=false`、`task=false`。
+- `migrateDB()` 不再执行旧的隐藏默认值 backfill。
+- 增加一个新的、只跑一次的历史清理迁移，保证历史用户不再被旧数据挡住。
+
+**Verification:**
+
+```powershell
+go test ./model -run 'TestGenerateDefaultSidebarConfigForRole_UsesVisibleDefaults|TestBackfillSidebarLegacyVisibleDefaults_UpdatesExistingUsersOnce' -count=1
+```
+
+**Deliverables:**
+
+- 更新后的后端默认配置生成逻辑
+- 新的一次性历史清理迁移
+- 清理后的迁移状态记录
+
+**Iteration Log:**
+
+- Attempt-1 (2026-04-16): 将后端侧边栏默认值改回可见，移除旧的 3 个隐藏 backfill 入口，并新增一次性 `BackfillSidebarLegacyVisibleDefaults` 清理历史关闭值。
+- Result (2026-04-16): 定向模型测试转绿，旧遗留 `chat.enabled=false`、`console.midjourney=false`、`console.task=false` 会被一次性恢复为可显示。
+
+### Step-03: 调整前端默认回退，去掉硬编码隐藏
+
+**Status:** Done
+
+**AC:**
+
+- `useSidebar` 在用户无个人配置时，不再通过 `hiddenDefaults` 把这几个模块默认设为隐藏。
+- 页面刷新后，管理员已开启的模块对无配置/已清理用户可直接显示。
+
+**Verification:**
+
+```powershell
+cd web
+bun run build
+```
+
+**Deliverables:**
+
+- 更新后的前端默认回退逻辑
+- 与管理员配置一致的默认可见性
+
+**Iteration Log:**
+
+- Attempt-1 (2026-04-16): 删除 `useSidebar` 中的 `hiddenDefaults`，让无用户配置时的默认可见性直接跟随管理员允许项。
+- Result (2026-04-16): 前端构建通过；无个人配置时不再被前端默认回退强制隐藏 `chat`、`midjourney`、`task`。
+
+### Step-04: 定向验证与回归
+
+**Status:** Done
+
+**AC:**
+
+- 定向后端测试通过。
+- 前端构建通过。
+- 不引入新的已知启动期侧边栏迁移错误。
+
+**Verification:**
+
+```powershell
+go test ./model -run 'TestGenerateDefaultSidebarConfigForRole_UsesVisibleDefaults|TestBackfillSidebarLegacyVisibleDefaults_UpdatesExistingUsersOnce' -count=1
+go test ./controller -run TestCalculateUserPermissions_AllowsRootSidebarSettings -count=1
+cd web
+bun run build
+```
+
+**Deliverables:**
+
+- 可复制的验证命令
+- 本轮实现结果与残留风险说明
+
+**Iteration Log:**
+
+- Attempt-1 (2026-04-16): 先跑 `go test ./controller -run TestCalculateUserPermissions_AllowsRootSidebarSettings -count=1` 与 `bun run build`；其中前端构建第一次因 124 秒超时中断，非编译错误。
+- Attempt-2 (2026-04-16): 将 `bun run build` 超时延长后重跑，并在 `gofmt` 后复跑定向 Go 测试。
+- Result (2026-04-16):
+  - `go test ./model -run 'TestGenerateDefaultSidebarConfigForRole_UsesVisibleDefaults|TestBackfillSidebarLegacyVisibleDefaults_UpdatesExistingUsersOnce' -count=1` 通过。
+  - `go test ./controller -run TestCalculateUserPermissions_AllowsRootSidebarSettings -count=1` 通过。
+  - `bun run build` 在 `web/` 目录通过，Vite 输出 built in 2m 41s。
+
+## 13. 红框侧边栏项改为管理员唯一控制源（2026-04-16）
+
+### 13.1 需求理解摘要
+
+- 个人页“边栏设置”不再允许用户修改红框对应的侧边栏分组。
+- 红框范围按本轮用户最新截图与说明，落为 `chat`、`console`、`personal` 三个分组。
+- 对这三个分组，管理员页“侧边栏管理（全局控制）”成为唯一控制源：
+  - 管理员打开则最终侧边栏显示；
+  - 管理员关闭则最终侧边栏隐藏；
+  - 用户历史 `sidebar_modules` 中的对应值不再影响最终显示。
+
+### 13.2 待定参数清单
+
+- 无。本轮按用户明确确认的红框范围直接实现。
+
+### 13.3 执行决议
+
+- 本轮采用“管理员唯一控制源 + 个人页移除可编辑项 + 保存时剥离旧用户值”的完整方案。
+- 不采用“只隐藏个人页 UI、但继续保留旧个人配置生效”的半方案，避免行为与界面不一致。
+- `admin` 分组不在本轮红框范围内，维持原有个人页可编辑语义。
+
+### Step-05: 先写前端失败测试锁定管理员唯一控制语义
+
+**Status:** Done
+
+**AC:**
+
+- 纯函数测试能够覆盖三件事：
+  - `chat`、`console`、`personal` 三个分组在最终显示逻辑中忽略用户关闭值；
+  - 用户保存配置时会剥离这三个分组；
+  - 个人页边栏设置 UI 会过滤掉这三个分组。
+
+**Verification:**
+
+```powershell
+cd web
+node --test src/helpers/sidebar-config.test.js
+```
+
+**Deliverables:**
+
+- 新增的前端纯函数测试文件
+- 明确表达管理员唯一控制语义的失败断言
+
+**Iteration Log:**
+
+- Attempt-1 (2026-04-16): 新增 `web/src/helpers/sidebar-config.test.js`，先用当前旧语义的 helper 触发 red。
+- Result (2026-04-16): `node --test src/helpers/sidebar-config.test.js` 按预期失败，失败点包括最终显示仍受用户值影响、保存未剥离红框分组、个人页仍显示红框分组。
+
+### Step-06: 实现管理员唯一控制逻辑与个人页过滤
+
+**Status:** Done
+
+**AC:**
+
+- `useSidebar` 最终显示逻辑对 `chat`、`console`、`personal` 三个分组不再读取用户个人配置。
+- 个人页“边栏设置”不再显示上述三个分组。
+- 用户保存/加载/重置个人边栏配置时，不再保留上述三个分组的个人值。
+- 当个人页已经没有任何可编辑分组时，“边栏设置”标签页不再显示。
+
+**Verification:**
+
+```powershell
+cd web
+node --test src/helpers/sidebar-config.test.js
+```
+
+**Deliverables:**
+
+- 新增的 `web/src/helpers/sidebar-config.js`
+- 更新后的 `web/src/hooks/common/useSidebar.js`
+- 更新后的 `web/src/components/settings/personal/cards/NotificationSettings.jsx`
+
+**Iteration Log:**
+
+- Attempt-1 (2026-04-16): 抽出 `buildFinalSidebarConfig`、`filterUserEditableSidebarSections`、`stripAdminOnlySectionsFromUserSidebarConfig` 三个纯函数，并接入 hook 与个人设置页。
+- Result (2026-04-16): 纯函数测试转绿；红框分组现在同时满足“个人页不可改”“保存时会剥离”“最终显示忽略用户值”三条要求。
+
+### Step-07: 前端验证与回归
+
+**Status:** Done
+
+**AC:**
+
+- 新增纯函数测试通过。
+- 前端生产构建通过。
+- 不引入新的前端编译错误。
+
+**Verification:**
+
+```powershell
+cd web
+node --test src/helpers/sidebar-config.test.js
+bun run build
+```
+
+**Deliverables:**
+
+- 可复现的验证命令
+- 本轮管理员唯一控制改动的验证结果
+
+**Iteration Log:**
+
+- Attempt-1 (2026-04-16): 先重跑 `node --test src/helpers/sidebar-config.test.js`，再跑 `bun run build` 做编译回归。
+- Result (2026-04-16):
+  - `node --test src/helpers/sidebar-config.test.js` 通过，3 个测试全部转绿。
+  - `bun run build` 在 `web/` 目录通过，Vite 输出 built in 1m 26s。

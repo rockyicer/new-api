@@ -293,13 +293,7 @@ func migrateDB() error {
 			return err
 		}
 	}
-	if err := BackfillSidebarChatHiddenDefault(); err != nil {
-		return err
-	}
-	if err := BackfillSidebarDrawingLogHiddenDefault(); err != nil {
-		return err
-	}
-	if err := BackfillSidebarTaskLogHiddenDefault(); err != nil {
+	if err := BackfillSidebarLegacyVisibleDefaults(); err != nil {
 		return err
 	}
 	return nil

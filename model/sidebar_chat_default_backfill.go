@@ -8,22 +8,18 @@ import (
 )
 
 const (
-	sidebarChatHiddenDefaultBackfillStatusKey       = "SidebarChatHiddenDefaultBackfillStatus"
-	sidebarChatHiddenDefaultBackfillStatusCompleted = "completed"
-	sidebarDrawingLogHiddenDefaultBackfillStatusKey = "SidebarDrawingLogHiddenDefaultBackfillStatus"
-	sidebarDrawingLogHiddenDefaultBackfillCompleted = "completed"
-	sidebarTaskLogHiddenDefaultBackfillStatusKey    = "SidebarTaskLogHiddenDefaultBackfillStatus"
-	sidebarTaskLogHiddenDefaultBackfillCompleted    = "completed"
+	sidebarLegacyVisibleDefaultsBackfillStatusKey       = "SidebarLegacyVisibleDefaultsBackfillStatus"
+	sidebarLegacyVisibleDefaultsBackfillStatusCompleted = "completed"
 )
 
 type sidebarModulesConfig map[string]map[string]bool
 
-func BackfillSidebarChatHiddenDefault() error {
-	status, err := getSidebarChatHiddenDefaultBackfillStatus()
+func BackfillSidebarLegacyVisibleDefaults() error {
+	status, err := getSidebarLegacyVisibleDefaultsBackfillStatus()
 	if err != nil {
 		return err
 	}
-	if status == sidebarChatHiddenDefaultBackfillStatusCompleted {
+	if status == sidebarLegacyVisibleDefaultsBackfillStatusCompleted {
 		return nil
 	}
 
@@ -34,7 +30,7 @@ func BackfillSidebarChatHiddenDefault() error {
 
 	updatedUsers := 0
 	for i := range users {
-		updated, updateErr := backfillUserSidebarChatHiddenDefault(&users[i])
+		updated, updateErr := backfillUserSidebarLegacyVisibleDefaults(&users[i])
 		if updateErr != nil {
 			return updateErr
 		}
@@ -43,17 +39,26 @@ func BackfillSidebarChatHiddenDefault() error {
 		}
 	}
 
-	if err = UpdateOption(sidebarChatHiddenDefaultBackfillStatusKey, sidebarChatHiddenDefaultBackfillStatusCompleted); err != nil {
+	if err = UpdateOption(
+		sidebarLegacyVisibleDefaultsBackfillStatusKey,
+		sidebarLegacyVisibleDefaultsBackfillStatusCompleted,
+	); err != nil {
 		return err
 	}
 
-	common.SysLog("backfilled sidebar chat hidden default for existing users: " + strconv.Itoa(updatedUsers))
+	common.SysLog(
+		"backfilled sidebar legacy visible defaults for existing users: " +
+			strconv.Itoa(updatedUsers),
+	)
 	return nil
 }
 
-func backfillUserSidebarChatHiddenDefault(user *User) (bool, error) {
+func backfillUserSidebarLegacyVisibleDefaults(user *User) (bool, error) {
 	currentSetting := user.GetSetting()
-	sidebarModules, changed, err := ensureSidebarChatHiddenByDefault(user.Role, currentSetting.SidebarModules)
+	sidebarModules, changed, err := ensureSidebarLegacyVisibleDefaults(
+		user.Role,
+		currentSetting.SidebarModules,
+	)
 	if err != nil {
 		return false, err
 	}
@@ -63,7 +68,9 @@ func backfillUserSidebarChatHiddenDefault(user *User) (bool, error) {
 
 	currentSetting.SidebarModules = sidebarModules
 	user.SetSetting(currentSetting)
-	if err = DB.Model(&User{}).Where("id = ?", user.Id).Update("setting", user.Setting).Error; err != nil {
+	if err = DB.Model(&User{}).
+		Where("id = ?", user.Id).
+		Update("setting", user.Setting).Error; err != nil {
 		return false, err
 	}
 	if err = updateSidebarBackfillUserCache(*user); err != nil {
@@ -72,14 +79,20 @@ func backfillUserSidebarChatHiddenDefault(user *User) (bool, error) {
 	return true, nil
 }
 
-func ensureSidebarChatHiddenByDefault(userRole int, raw string) (string, bool, error) {
+func ensureSidebarLegacyVisibleDefaults(
+	userRole int,
+	raw string,
+) (string, bool, error) {
 	if strings.TrimSpace(raw) == "" {
 		return generateDefaultSidebarConfigForRole(userRole), true, nil
 	}
 
 	var config sidebarModulesConfig
 	if err := common.UnmarshalJsonStr(raw, &config); err != nil {
-		common.SysLog("failed to parse sidebar modules during chat default backfill, regenerate default config: " + err.Error())
+		common.SysLog(
+			"failed to parse sidebar modules during visible defaults backfill, regenerate default config: " +
+				err.Error(),
+		)
 		return generateDefaultSidebarConfigForRole(userRole), true, nil
 	}
 	if config == nil {
@@ -87,22 +100,25 @@ func ensureSidebarChatHiddenByDefault(userRole int, raw string) (string, bool, e
 	}
 
 	defaultConfig := buildDefaultSidebarConfigForRole(userRole)
-	defaultChatConfig := defaultConfig["chat"]
+	changed := mergeMissingSidebarDefaults(config, defaultConfig)
 
 	if config["chat"] == nil {
 		config["chat"] = make(map[string]bool)
 	}
-
-	changed := false
-	for key, value := range defaultChatConfig {
-		if _, exists := config["chat"][key]; !exists {
-			config["chat"][key] = value
-			changed = true
-		}
+	if !config["chat"]["enabled"] {
+		config["chat"]["enabled"] = true
+		changed = true
 	}
 
-	if config["chat"]["enabled"] {
-		config["chat"]["enabled"] = false
+	if config["console"] == nil {
+		config["console"] = make(map[string]bool)
+	}
+	if !config["console"]["midjourney"] {
+		config["console"]["midjourney"] = true
+		changed = true
+	}
+	if !config["console"]["task"] {
+		config["console"]["task"] = true
 		changed = true
 	}
 
@@ -117,9 +133,33 @@ func ensureSidebarChatHiddenByDefault(userRole int, raw string) (string, bool, e
 	return string(encoded), true, nil
 }
 
-func getSidebarChatHiddenDefaultBackfillStatus() (string, error) {
+func mergeMissingSidebarDefaults(
+	config sidebarModulesConfig,
+	defaultConfig sidebarModulesConfig,
+) bool {
+	changed := false
+
+	for sectionKey, sectionConfig := range defaultConfig {
+		if config[sectionKey] == nil {
+			config[sectionKey] = make(map[string]bool)
+			changed = true
+		}
+		for moduleKey, value := range sectionConfig {
+			if _, exists := config[sectionKey][moduleKey]; !exists {
+				config[sectionKey][moduleKey] = value
+				changed = true
+			}
+		}
+	}
+
+	return changed
+}
+
+func getSidebarLegacyVisibleDefaultsBackfillStatus() (string, error) {
 	var option Option
-	result := DB.Where("key = ?", sidebarChatHiddenDefaultBackfillStatusKey).Limit(1).Find(&option)
+	result := DB.Where("key = ?", sidebarLegacyVisibleDefaultsBackfillStatusKey).
+		Limit(1).
+		Find(&option)
 	if result.Error != nil {
 		return "", result.Error
 	}
@@ -133,7 +173,7 @@ func buildDefaultSidebarConfigForRole(userRole int) sidebarModulesConfig {
 	defaultConfig := sidebarModulesConfig{}
 
 	defaultConfig["chat"] = map[string]bool{
-		"enabled":    false,
+		"enabled":    true,
 		"playground": true,
 		"chat":       true,
 	}
@@ -143,8 +183,8 @@ func buildDefaultSidebarConfigForRole(userRole int) sidebarModulesConfig {
 		"detail":     true,
 		"token":      true,
 		"log":        true,
-		"midjourney": false,
-		"task":       false,
+		"midjourney": true,
+		"task":       true,
 	}
 
 	defaultConfig["personal"] = map[string]bool{
@@ -155,247 +195,29 @@ func buildDefaultSidebarConfigForRole(userRole int) sidebarModulesConfig {
 
 	if userRole == common.RoleAdminUser {
 		defaultConfig["admin"] = map[string]bool{
-			"enabled":    true,
-			"channel":    true,
-			"models":     true,
-			"redemption": true,
-			"user":       true,
-			"setting":    false,
+			"enabled":      true,
+			"channel":      true,
+			"models":       true,
+			"deployment":   true,
+			"subscription": true,
+			"redemption":   true,
+			"user":         true,
+			"setting":      false,
 		}
 	} else if userRole == common.RoleRootUser {
 		defaultConfig["admin"] = map[string]bool{
-			"enabled":    true,
-			"channel":    true,
-			"models":     true,
-			"redemption": true,
-			"user":       true,
-			"setting":    true,
+			"enabled":      true,
+			"channel":      true,
+			"models":       true,
+			"deployment":   true,
+			"subscription": true,
+			"redemption":   true,
+			"user":         true,
+			"setting":      true,
 		}
 	}
 
 	return defaultConfig
-}
-
-func BackfillSidebarDrawingLogHiddenDefault() error {
-	status, err := getSidebarDrawingLogHiddenDefaultBackfillStatus()
-	if err != nil {
-		return err
-	}
-	if status == sidebarDrawingLogHiddenDefaultBackfillCompleted {
-		return nil
-	}
-
-	var users []User
-	if err = DB.Find(&users).Error; err != nil {
-		return err
-	}
-
-	updatedUsers := 0
-	for i := range users {
-		updated, updateErr := backfillUserSidebarDrawingLogHiddenDefault(&users[i])
-		if updateErr != nil {
-			return updateErr
-		}
-		if updated {
-			updatedUsers++
-		}
-	}
-
-	if err = UpdateOption(sidebarDrawingLogHiddenDefaultBackfillStatusKey, sidebarDrawingLogHiddenDefaultBackfillCompleted); err != nil {
-		return err
-	}
-
-	common.SysLog("backfilled sidebar drawing log hidden default for existing users: " + strconv.Itoa(updatedUsers))
-	return nil
-}
-
-func BackfillSidebarTaskLogHiddenDefault() error {
-	status, err := getSidebarTaskLogHiddenDefaultBackfillStatus()
-	if err != nil {
-		return err
-	}
-	if status == sidebarTaskLogHiddenDefaultBackfillCompleted {
-		return nil
-	}
-
-	var users []User
-	if err = DB.Find(&users).Error; err != nil {
-		return err
-	}
-
-	updatedUsers := 0
-	for i := range users {
-		updated, updateErr := backfillUserSidebarTaskLogHiddenDefault(&users[i])
-		if updateErr != nil {
-			return updateErr
-		}
-		if updated {
-			updatedUsers++
-		}
-	}
-
-	if err = UpdateOption(sidebarTaskLogHiddenDefaultBackfillStatusKey, sidebarTaskLogHiddenDefaultBackfillCompleted); err != nil {
-		return err
-	}
-
-	common.SysLog("backfilled sidebar task log hidden default for existing users: " + strconv.Itoa(updatedUsers))
-	return nil
-}
-
-func backfillUserSidebarDrawingLogHiddenDefault(user *User) (bool, error) {
-	currentSetting := user.GetSetting()
-	sidebarModules, changed, err := ensureSidebarDrawingLogHiddenByDefault(user.Role, currentSetting.SidebarModules)
-	if err != nil {
-		return false, err
-	}
-	if !changed {
-		return false, nil
-	}
-
-	currentSetting.SidebarModules = sidebarModules
-	user.SetSetting(currentSetting)
-	if err = DB.Model(&User{}).Where("id = ?", user.Id).Update("setting", user.Setting).Error; err != nil {
-		return false, err
-	}
-	if err = updateSidebarBackfillUserCache(*user); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-func backfillUserSidebarTaskLogHiddenDefault(user *User) (bool, error) {
-	currentSetting := user.GetSetting()
-	sidebarModules, changed, err := ensureSidebarTaskLogHiddenByDefault(user.Role, currentSetting.SidebarModules)
-	if err != nil {
-		return false, err
-	}
-	if !changed {
-		return false, nil
-	}
-
-	currentSetting.SidebarModules = sidebarModules
-	user.SetSetting(currentSetting)
-	if err = DB.Model(&User{}).Where("id = ?", user.Id).Update("setting", user.Setting).Error; err != nil {
-		return false, err
-	}
-	if err = updateSidebarBackfillUserCache(*user); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-func ensureSidebarDrawingLogHiddenByDefault(userRole int, raw string) (string, bool, error) {
-	if strings.TrimSpace(raw) == "" {
-		return generateDefaultSidebarConfigForRole(userRole), true, nil
-	}
-
-	var config sidebarModulesConfig
-	if err := common.UnmarshalJsonStr(raw, &config); err != nil {
-		common.SysLog("failed to parse sidebar modules during drawing log default backfill, regenerate default config: " + err.Error())
-		return generateDefaultSidebarConfigForRole(userRole), true, nil
-	}
-	if config == nil {
-		config = make(sidebarModulesConfig)
-	}
-
-	defaultConfig := buildDefaultSidebarConfigForRole(userRole)
-	defaultConsoleConfig := defaultConfig["console"]
-
-	if config["console"] == nil {
-		config["console"] = make(map[string]bool)
-	}
-
-	changed := false
-	for key, value := range defaultConsoleConfig {
-		if _, exists := config["console"][key]; !exists {
-			config["console"][key] = value
-			changed = true
-		}
-	}
-
-	if config["console"]["midjourney"] {
-		config["console"]["midjourney"] = false
-		changed = true
-	}
-
-	if !changed {
-		return raw, false, nil
-	}
-
-	encoded, err := common.Marshal(config)
-	if err != nil {
-		return "", false, err
-	}
-	return string(encoded), true, nil
-}
-
-func ensureSidebarTaskLogHiddenByDefault(userRole int, raw string) (string, bool, error) {
-	if strings.TrimSpace(raw) == "" {
-		return generateDefaultSidebarConfigForRole(userRole), true, nil
-	}
-
-	var config sidebarModulesConfig
-	if err := common.UnmarshalJsonStr(raw, &config); err != nil {
-		common.SysLog("failed to parse sidebar modules during task log default backfill, regenerate default config: " + err.Error())
-		return generateDefaultSidebarConfigForRole(userRole), true, nil
-	}
-	if config == nil {
-		config = make(sidebarModulesConfig)
-	}
-
-	defaultConfig := buildDefaultSidebarConfigForRole(userRole)
-	defaultConsoleConfig := defaultConfig["console"]
-
-	if config["console"] == nil {
-		config["console"] = make(map[string]bool)
-	}
-
-	changed := false
-	for key, value := range defaultConsoleConfig {
-		if _, exists := config["console"][key]; !exists {
-			config["console"][key] = value
-			changed = true
-		}
-	}
-
-	if config["console"]["task"] {
-		config["console"]["task"] = false
-		changed = true
-	}
-
-	if !changed {
-		return raw, false, nil
-	}
-
-	encoded, err := common.Marshal(config)
-	if err != nil {
-		return "", false, err
-	}
-	return string(encoded), true, nil
-}
-
-func getSidebarDrawingLogHiddenDefaultBackfillStatus() (string, error) {
-	var option Option
-	result := DB.Where("key = ?", sidebarDrawingLogHiddenDefaultBackfillStatusKey).Limit(1).Find(&option)
-	if result.Error != nil {
-		return "", result.Error
-	}
-	if result.RowsAffected == 0 {
-		return "", nil
-	}
-	return option.Value, nil
-}
-
-func getSidebarTaskLogHiddenDefaultBackfillStatus() (string, error) {
-	var option Option
-	result := DB.Where("key = ?", sidebarTaskLogHiddenDefaultBackfillStatusKey).Limit(1).Find(&option)
-	if result.Error != nil {
-		return "", result.Error
-	}
-	if result.RowsAffected == 0 {
-		return "", nil
-	}
-	return option.Value, nil
 }
 
 func updateSidebarBackfillUserCache(user User) error {

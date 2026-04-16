@@ -25,38 +25,44 @@ func encodeSidebarModulesForTest(t *testing.T, config map[string]map[string]bool
 	return string(encoded)
 }
 
-func TestGenerateDefaultSidebarConfigForRole_HidesChatSectionByDefault(t *testing.T) {
-	config := decodeSidebarModulesForTest(t, generateDefaultSidebarConfigForRole(common.RoleCommonUser))
+func TestGenerateDefaultSidebarConfigForRole_UsesVisibleDefaults(t *testing.T) {
+	config := decodeSidebarModulesForTest(
+		t,
+		generateDefaultSidebarConfigForRole(common.RoleCommonUser),
+	)
 
 	require.Contains(t, config, "chat")
-	assert.False(t, config["chat"]["enabled"])
+	assert.True(t, config["chat"]["enabled"])
 	assert.True(t, config["chat"]["playground"])
 	assert.True(t, config["chat"]["chat"])
-	assert.False(t, config["console"]["midjourney"])
-	assert.False(t, config["console"]["task"])
+	assert.True(t, config["console"]["midjourney"])
+	assert.True(t, config["console"]["task"])
 }
 
-func TestBackfillSidebarChatHiddenDefault_UpdatesExistingUsersOnce(t *testing.T) {
+func TestBackfillSidebarLegacyVisibleDefaults_UpdatesExistingUsersOnce(t *testing.T) {
 	truncateTables(t)
 	require.NoError(t, DB.AutoMigrate(&Option{}))
 
 	legacySidebarConfig := map[string]map[string]bool{
 		"chat": {
-			"enabled":    true,
+			"enabled":    false,
 			"playground": true,
-			"chat":       false,
+			"chat":       true,
 		},
 		"console": {
-			"enabled": true,
-			"detail":  true,
-			"token":   false,
+			"enabled":    true,
+			"detail":     true,
+			"token":      false,
+			"log":        true,
+			"midjourney": false,
+			"task":       false,
 		},
 	}
 
 	legacyUser := User{
-		Username: "legacy-chat-user",
+		Username: "legacy-sidebar-user",
 		Password: "secret",
-		AffCode:  "legacy-aff-code",
+		AffCode:  "legacy-sidebar-aff",
 		Role:     common.RoleCommonUser,
 		Status:   common.UserStatusEnabled,
 	}
@@ -67,9 +73,9 @@ func TestBackfillSidebarChatHiddenDefault_UpdatesExistingUsersOnce(t *testing.T)
 	require.NoError(t, DB.Create(&legacyUser).Error)
 
 	missingSidebarUser := User{
-		Username: "missing-sidebar-user",
+		Username: "missing-sidebar-visible-user",
 		Password: "secret",
-		AffCode:  "missing-aff-code",
+		AffCode:  "missing-sidebar-aff",
 		Role:     common.RoleCommonUser,
 		Status:   common.UserStatusEnabled,
 	}
@@ -78,153 +84,46 @@ func TestBackfillSidebarChatHiddenDefault_UpdatesExistingUsersOnce(t *testing.T)
 	})
 	require.NoError(t, DB.Create(&missingSidebarUser).Error)
 
-	require.NoError(t, BackfillSidebarChatHiddenDefault())
+	require.NoError(t, BackfillSidebarLegacyVisibleDefaults())
 
 	var reloadedLegacyUser User
 	require.NoError(t, DB.First(&reloadedLegacyUser, legacyUser.Id).Error)
 	legacySetting := reloadedLegacyUser.GetSetting()
 	assert.Equal(t, "zh-CN", legacySetting.Language)
 	legacySidebar := decodeSidebarModulesForTest(t, legacySetting.SidebarModules)
-	assert.False(t, legacySidebar["chat"]["enabled"])
+	assert.True(t, legacySidebar["chat"]["enabled"])
 	assert.True(t, legacySidebar["chat"]["playground"])
-	assert.False(t, legacySidebar["chat"]["chat"])
+	assert.True(t, legacySidebar["chat"]["chat"])
 	assert.False(t, legacySidebar["console"]["token"])
+	assert.True(t, legacySidebar["console"]["midjourney"])
+	assert.True(t, legacySidebar["console"]["task"])
 
 	var reloadedMissingSidebarUser User
 	require.NoError(t, DB.First(&reloadedMissingSidebarUser, missingSidebarUser.Id).Error)
 	missingSidebarSetting := reloadedMissingSidebarUser.GetSetting()
 	assert.Equal(t, "en", missingSidebarSetting.Language)
-	missingSidebarConfig := decodeSidebarModulesForTest(t, missingSidebarSetting.SidebarModules)
-	assert.False(t, missingSidebarConfig["chat"]["enabled"])
-	assert.True(t, missingSidebarConfig["chat"]["playground"])
-	assert.True(t, missingSidebarConfig["chat"]["chat"])
+	missingSidebar := decodeSidebarModulesForTest(t, missingSidebarSetting.SidebarModules)
+	assert.True(t, missingSidebar["chat"]["enabled"])
+	assert.True(t, missingSidebar["console"]["midjourney"])
+	assert.True(t, missingSidebar["console"]["task"])
 
-	legacySidebar["chat"]["enabled"] = true
+	legacySidebar["chat"]["enabled"] = false
+	legacySidebar["console"]["task"] = false
 	legacySetting.SidebarModules = encodeSidebarModulesForTest(t, legacySidebar)
 	reloadedLegacyUser.SetSetting(legacySetting)
 	require.NoError(t, reloadedLegacyUser.Update(false))
 
-	require.NoError(t, BackfillSidebarChatHiddenDefault())
+	require.NoError(t, BackfillSidebarLegacyVisibleDefaults())
 
 	var reopenedLegacyUser User
 	require.NoError(t, DB.First(&reopenedLegacyUser, legacyUser.Id).Error)
-	reopenedLegacySetting := reopenedLegacyUser.GetSetting()
-	reopenedLegacySidebar := decodeSidebarModulesForTest(t, reopenedLegacySetting.SidebarModules)
-	assert.True(t, reopenedLegacySidebar["chat"]["enabled"])
-	assert.Equal(t, sidebarChatHiddenDefaultBackfillStatusCompleted, getOptionValueForTest(t, sidebarChatHiddenDefaultBackfillStatusKey))
-}
-
-func TestBackfillSidebarDrawingLogHiddenDefault_UpdatesExistingUsersOnce(t *testing.T) {
-	truncateTables(t)
-	require.NoError(t, DB.AutoMigrate(&Option{}))
-
-	userSidebarConfig := map[string]map[string]bool{
-		"chat": {
-			"enabled":    true,
-			"playground": true,
-			"chat":       true,
-		},
-		"console": {
-			"enabled":    true,
-			"detail":     true,
-			"token":      false,
-			"log":        true,
-			"midjourney": true,
-			"task":       true,
-		},
-	}
-
-	user := User{
-		Username: "drawing-log-user",
-		Password: "secret",
-		AffCode:  "drawing-log-aff-code",
-		Role:     common.RoleCommonUser,
-		Status:   common.UserStatusEnabled,
-	}
-	user.SetSetting(dto.UserSetting{
-		Language:       "zh-CN",
-		SidebarModules: encodeSidebarModulesForTest(t, userSidebarConfig),
-	})
-	require.NoError(t, DB.Create(&user).Error)
-
-	require.NoError(t, BackfillSidebarDrawingLogHiddenDefault())
-
-	var reloadedUser User
-	require.NoError(t, DB.First(&reloadedUser, user.Id).Error)
-	userSetting := reloadedUser.GetSetting()
-	sidebarConfig := decodeSidebarModulesForTest(t, userSetting.SidebarModules)
-	assert.True(t, sidebarConfig["chat"]["enabled"])
-	assert.False(t, sidebarConfig["console"]["midjourney"])
-	assert.False(t, sidebarConfig["console"]["token"])
-
-	sidebarConfig["console"]["midjourney"] = true
-	userSetting.SidebarModules = encodeSidebarModulesForTest(t, sidebarConfig)
-	reloadedUser.SetSetting(userSetting)
-	require.NoError(t, reloadedUser.Update(false))
-
-	require.NoError(t, BackfillSidebarDrawingLogHiddenDefault())
-
-	var reopenedUser User
-	require.NoError(t, DB.First(&reopenedUser, user.Id).Error)
-	reopenedSetting := reopenedUser.GetSetting()
-	reopenedConfig := decodeSidebarModulesForTest(t, reopenedSetting.SidebarModules)
-	assert.True(t, reopenedConfig["console"]["midjourney"])
-	assert.Equal(t, sidebarDrawingLogHiddenDefaultBackfillCompleted, getOptionValueForTest(t, sidebarDrawingLogHiddenDefaultBackfillStatusKey))
-}
-
-func TestBackfillSidebarTaskLogHiddenDefault_UpdatesExistingUsersOnce(t *testing.T) {
-	truncateTables(t)
-	require.NoError(t, DB.AutoMigrate(&Option{}))
-
-	userSidebarConfig := map[string]map[string]bool{
-		"chat": {
-			"enabled":    false,
-			"playground": true,
-			"chat":       true,
-		},
-		"console": {
-			"enabled":    true,
-			"detail":     true,
-			"token":      true,
-			"log":        true,
-			"midjourney": false,
-			"task":       true,
-		},
-	}
-
-	user := User{
-		Username: "task-log-user",
-		Password: "secret",
-		AffCode:  "task-log-aff-code",
-		Role:     common.RoleCommonUser,
-		Status:   common.UserStatusEnabled,
-	}
-	user.SetSetting(dto.UserSetting{
-		Language:       "zh-CN",
-		SidebarModules: encodeSidebarModulesForTest(t, userSidebarConfig),
-	})
-	require.NoError(t, DB.Create(&user).Error)
-
-	require.NoError(t, BackfillSidebarTaskLogHiddenDefault())
-
-	var reloadedUser User
-	require.NoError(t, DB.First(&reloadedUser, user.Id).Error)
-	userSetting := reloadedUser.GetSetting()
-	sidebarConfig := decodeSidebarModulesForTest(t, userSetting.SidebarModules)
-	assert.False(t, sidebarConfig["console"]["task"])
-	assert.False(t, sidebarConfig["console"]["midjourney"])
-
-	sidebarConfig["console"]["task"] = true
-	userSetting.SidebarModules = encodeSidebarModulesForTest(t, sidebarConfig)
-	reloadedUser.SetSetting(userSetting)
-	require.NoError(t, reloadedUser.Update(false))
-
-	require.NoError(t, BackfillSidebarTaskLogHiddenDefault())
-
-	var reopenedUser User
-	require.NoError(t, DB.First(&reopenedUser, user.Id).Error)
-	reopenedSetting := reopenedUser.GetSetting()
-	reopenedConfig := decodeSidebarModulesForTest(t, reopenedSetting.SidebarModules)
-	assert.True(t, reopenedConfig["console"]["task"])
-	assert.Equal(t, sidebarTaskLogHiddenDefaultBackfillCompleted, getOptionValueForTest(t, sidebarTaskLogHiddenDefaultBackfillStatusKey))
+	reopenedSetting := reopenedLegacyUser.GetSetting()
+	reopenedSidebar := decodeSidebarModulesForTest(t, reopenedSetting.SidebarModules)
+	assert.False(t, reopenedSidebar["chat"]["enabled"])
+	assert.False(t, reopenedSidebar["console"]["task"])
+	assert.Equal(
+		t,
+		sidebarLegacyVisibleDefaultsBackfillStatusCompleted,
+		getOptionValueForTest(t, sidebarLegacyVisibleDefaultsBackfillStatusKey),
+	)
 }
