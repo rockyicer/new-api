@@ -60,14 +60,14 @@ const FooterBar = () => {
             <div className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8 w-full'>
               <div className='text-left'>
                 <p className='!text-semi-color-text-0 font-semibold mb-5'>
-                  {t('å…³äºŽæˆ‘ä»¬')}
+                  {t('关于我们')}
                 </p>
                 <div className='flex flex-col gap-4'>
                   <Link to='/about' className='!text-semi-color-text-1'>
-                    {t('å…³äºŽé¡¹ç›®')}
+                    {t('关于项目')}
                   </Link>
                   <Link to='/contact' className='!text-semi-color-text-1'>
-                    {t('è”ç³»æˆ‘ä»¬')}
+                    {t('联系我们')}
                   </Link>
                   <a
                     href='https://docs.newapi.pro/wiki/features-introduction/'
@@ -75,14 +75,14 @@ const FooterBar = () => {
                     rel='noopener noreferrer'
                     className='!text-semi-color-text-1'
                   >
-                    {t('åŠŸèƒ½ç‰¹æ€§')}
+                    {t('功能特性')}
                   </a>
                 </div>
               </div>
 
               <div className='text-left'>
                 <p className='!text-semi-color-text-0 font-semibold mb-5'>
-                  {t('æ–‡æ¡£')}
+                  {t('文档')}
                 </p>
                 <div className='flex flex-col gap-4'>
                   <a
@@ -91,7 +91,7 @@ const FooterBar = () => {
                     rel='noopener noreferrer'
                     className='!text-semi-color-text-1'
                   >
-                    {t('å¿«é€Ÿå¼€å§‹')}
+                    {t('快速开始')}
                   </a>
                   <a
                     href='https://docs.newapi.pro/installation/'
@@ -99,7 +99,7 @@ const FooterBar = () => {
                     rel='noopener noreferrer'
                     className='!text-semi-color-text-1'
                   >
-                    {t('å®‰è£…æŒ‡å—')}
+                    {t('安装指南')}
                   </a>
                   <a
                     href='https://docs.newapi.pro/api/'
@@ -107,14 +107,14 @@ const FooterBar = () => {
                     rel='noopener noreferrer'
                     className='!text-semi-color-text-1'
                   >
-                    {t('API æ–‡æ¡£')}
+                    {t('API 文档')}
                   </a>
                 </div>
               </div>
 
               <div className='text-left'>
                 <p className='!text-semi-color-text-0 font-semibold mb-5'>
-                  {t('ç›¸å…³é¡¹ç›®')}
+                  {t('相关项目')}
                 </p>
                 <div className='flex flex-col gap-4'>
                   <a
@@ -146,7 +146,7 @@ const FooterBar = () => {
 
               <div className='text-left'>
                 <p className='!text-semi-color-text-0 font-semibold mb-5'>
-                  {t('å‹æƒ…é“¾æŽ¥')}
+                  {t('友情链接')}
                 </p>
                 <div className='flex flex-col gap-4'>
                   <a
@@ -182,13 +182,13 @@ const FooterBar = () => {
         <div className='flex flex-col md:flex-row items-center justify-between w-full max-w-[1110px] gap-6'>
           <div className='flex flex-wrap items-center gap-2'>
             <Typography.Text className='text-sm !text-semi-color-text-1'>
-              Â© {currentYear} {systemName}. {t('ç‰ˆæƒæ‰€æœ‰')}
+              © {currentYear} {systemName}. {t('版权所有')}
             </Typography.Text>
           </div>
 
           <div className='text-sm'>
             <span className='!text-semi-color-text-1'>
-              {t('è®¾è®¡ä¸Žå¼€å‘ç”±')}{' '}
+              {t('设计与开发由')}{' '}
             </span>
             <a
               href='https://github.com/QuantumNous/new-api'
