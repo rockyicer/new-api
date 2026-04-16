@@ -348,17 +348,22 @@ func TokenAuth() func(c *gin.Context) {
 			return
 		}
 
+		denyIps := token.GetDenyIpLimits()
 		allowIps := token.GetIpLimits()
-		if len(allowIps) > 0 {
+		if len(denyIps) > 0 || len(allowIps) > 0 {
 			clientIp := c.ClientIP()
 			logger.LogDebug(c, "Token has IP restrictions, checking client IP %s", clientIp)
 			ip := net.ParseIP(clientIp)
 			if ip == nil {
-				abortWithOpenAiMessage(c, http.StatusForbidden, "无法解析客户端 IP 地址")
+				abortWithOpenAiMessage(c, http.StatusForbidden, common.TranslateMessage(c, i18n.MsgTokenClientIPInvalid))
 				return
 			}
-			if common.IsIpInCIDRList(ip, allowIps) == false {
-				abortWithOpenAiMessage(c, http.StatusForbidden, "您的 IP 不在令牌允许访问的列表中", types.ErrorCodeAccessDenied)
+			if len(denyIps) > 0 && common.IsIpInCIDRList(ip, denyIps) {
+				abortWithOpenAiMessage(c, http.StatusForbidden, common.TranslateMessage(c, i18n.MsgTokenIPBlacklisted), types.ErrorCodeAccessDenied)
+				return
+			}
+			if len(allowIps) > 0 && !common.IsIpInCIDRList(ip, allowIps) {
+				abortWithOpenAiMessage(c, http.StatusForbidden, common.TranslateMessage(c, i18n.MsgTokenIPNotAllowed), types.ErrorCodeAccessDenied)
 				return
 			}
 			logger.LogDebug(c, "Client IP %s passed the token IP restrictions check", clientIp)

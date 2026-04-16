@@ -46,6 +46,9 @@ token.expired: "This token has expired"
 token.exhausted: "This token quota is exhausted TokenStatusExhausted[sk-{{.Prefix}}***{{.Suffix}}]"
 token.status_unavailable: "This token status is unavailable"
 token.db_error: "Invalid token, database query error, please contact administrator"
+token.client_ip_invalid: "Unable to parse the client IP address"
+token.ip_blacklisted: "Your IP address is blocked by this token"
+token.ip_not_allowed: "Your IP address is not in this token's allowlist"
 
 # Redemption messages
 redemption.name_length: "Redemption code name length must be between 1-20"

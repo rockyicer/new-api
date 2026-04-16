@@ -47,6 +47,10 @@ type tokenPeriodQuotaRecord struct {
 	QuotaNextResetTime int64  `gorm:"column:quota_next_reset_time"`
 }
 
+type tokenIPRuleRecord struct {
+	DenyIps string `gorm:"column:deny_ips"`
+}
+
 func setupTokenControllerTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -113,6 +117,29 @@ func ensureTokenPeriodQuotaColumns(t *testing.T, db *gorm.DB) {
 		if err := db.Exec(statement.sql).Error; err != nil {
 			t.Fatalf("failed to add token period quota column %s: %v", statement.column, err)
 		}
+	}
+}
+
+func ensureTokenIPRuleColumns(t *testing.T, db *gorm.DB) {
+	t.Helper()
+
+	type tableInfoRow struct {
+		Name string `gorm:"column:name"`
+	}
+
+	var columns []tableInfoRow
+	if err := db.Raw("PRAGMA table_info(tokens)").Scan(&columns).Error; err != nil {
+		t.Fatalf("failed to inspect token columns: %v", err)
+	}
+
+	for _, column := range columns {
+		if column.Name == "deny_ips" {
+			return
+		}
+	}
+
+	if err := db.Exec("ALTER TABLE tokens ADD COLUMN deny_ips TEXT DEFAULT ''").Error; err != nil {
+		t.Fatalf("failed to add token deny_ips column: %v", err)
 	}
 }
 
@@ -359,6 +386,39 @@ func TestAddTokenPersistsPeriodQuotaSettings(t *testing.T) {
 	}
 }
 
+func TestAddTokenPersistsDenyIps(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	ensureTokenIPRuleColumns(t, db)
+
+	body := map[string]any{
+		"name":                 "ip-blacklist-token",
+		"expired_time":         -1,
+		"remain_quota":         1200,
+		"unlimited_quota":      false,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"deny_ips":             "10.0.0.1\n192.168.0.0/24",
+		"group":                "default",
+		"cross_group_retry":    false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 1)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var record tokenIPRuleRecord
+	if err := db.Raw("SELECT deny_ips FROM tokens ORDER BY id DESC LIMIT 1").Scan(&record).Error; err != nil {
+		t.Fatalf("failed to query stored token ip rules: %v", err)
+	}
+	if record.DenyIps != "10.0.0.1\n192.168.0.0/24" {
+		t.Fatalf("expected deny_ips to be persisted, got %q", record.DenyIps)
+	}
+}
+
 func TestUpdateTokenResetsPeriodQuotaWindowWhenModeChanges(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
 	ensureTokenPeriodQuotaColumns(t, db)
@@ -412,6 +472,41 @@ func TestUpdateTokenResetsPeriodQuotaWindowWhenModeChanges(t *testing.T) {
 	}
 	if record.QuotaNextResetTime <= common.GetTimestamp() {
 		t.Fatalf("expected quota_next_reset_time to move to a future window, got %d", record.QuotaNextResetTime)
+	}
+}
+
+func TestUpdateTokenPersistsDenyIps(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	ensureTokenIPRuleColumns(t, db)
+	token := seedToken(t, db, 1, "editable-ip-blacklist-token", "blacklist1234token5678")
+
+	body := map[string]any{
+		"id":                   token.Id,
+		"name":                 "editable-ip-blacklist-token",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"deny_ips":             "172.16.0.1\n203.0.113.0/24",
+		"group":                "default",
+		"cross_group_retry":    false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 1)
+	UpdateToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var record tokenIPRuleRecord
+	if err := db.Raw("SELECT deny_ips FROM tokens WHERE id = ?", token.Id).Scan(&record).Error; err != nil {
+		t.Fatalf("failed to query updated token ip rules: %v", err)
+	}
+	if record.DenyIps != "172.16.0.1\n203.0.113.0/24" {
+		t.Fatalf("expected deny_ips to be updated, got %q", record.DenyIps)
 	}
 }
 

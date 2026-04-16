@@ -224,6 +224,7 @@ func AddToken(c *gin.Context) {
 		ModelLimitsEnabled: token.ModelLimitsEnabled,
 		ModelLimits:        token.ModelLimits,
 		AllowIps:           token.AllowIps,
+		DenyIps:            token.DenyIps,
 		Group:              token.Group,
 		CrossGroupRetry:    token.CrossGroupRetry,
 	}
@@ -312,6 +313,7 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.ModelLimitsEnabled = token.ModelLimitsEnabled
 		cleanToken.ModelLimits = token.ModelLimits
 		cleanToken.AllowIps = token.AllowIps
+		cleanToken.DenyIps = token.DenyIps
 		cleanToken.Group = token.Group
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
 		if err := cleanToken.ApplyPeriodQuotaConfig(token.QuotaPeriod, token.QuotaLimit, resetWindow, time.Now()); err != nil {

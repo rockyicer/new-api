@@ -25,6 +25,7 @@ type Token struct {
 	ModelLimitsEnabled bool           `json:"model_limits_enabled"`
 	ModelLimits        string         `json:"model_limits" gorm:"type:text"`
 	AllowIps           *string        `json:"allow_ips" gorm:"default:''"`
+	DenyIps            *string        `json:"deny_ips" gorm:"default:''"`
 	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
 	QuotaPeriod        string         `json:"quota_period" gorm:"type:varchar(16);default:''"`
 	QuotaLimit         int            `json:"quota_limit" gorm:"default:0"`
@@ -62,25 +63,33 @@ func (token *Token) GetMaskedKey() string {
 }
 
 func (token *Token) GetIpLimits() []string {
-	// delete empty spaces
-	//split with \n
-	ipLimits := make([]string, 0)
-	if token.AllowIps == nil {
-		return ipLimits
+	return parseIPRules(token.AllowIps)
+}
+
+func (token *Token) GetDenyIpLimits() []string {
+	return parseIPRules(token.DenyIps)
+}
+
+func parseIPRules(rawRules *string) []string {
+	ipRules := make([]string, 0)
+	if rawRules == nil {
+		return ipRules
 	}
-	cleanIps := strings.ReplaceAll(*token.AllowIps, " ", "")
-	if cleanIps == "" {
-		return ipLimits
+
+	cleanRules := strings.ReplaceAll(*rawRules, " ", "")
+	if cleanRules == "" {
+		return ipRules
 	}
-	ips := strings.Split(cleanIps, "\n")
-	for _, ip := range ips {
-		ip = strings.TrimSpace(ip)
-		ip = strings.ReplaceAll(ip, ",", "")
-		if ip != "" {
-			ipLimits = append(ipLimits, ip)
+
+	rules := strings.Split(cleanRules, "\n")
+	for _, rule := range rules {
+		rule = strings.TrimSpace(rule)
+		rule = strings.ReplaceAll(rule, ",", "")
+		if rule != "" {
+			ipRules = append(ipRules, rule)
 		}
 	}
-	return ipLimits
+	return ipRules
 }
 
 func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
@@ -311,7 +320,7 @@ func (token *Token) Update() (err error) {
 		}
 	}()
 	err = DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
-		"model_limits_enabled", "model_limits", "allow_ips", "quota_period", "quota_limit",
+		"model_limits_enabled", "model_limits", "allow_ips", "deny_ips", "quota_period", "quota_limit",
 		"quota_used_in_period", "quota_last_reset_time", "quota_next_reset_time",
 		"group", "cross_group_retry").Updates(token).Error
 	return err

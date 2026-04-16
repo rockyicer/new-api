@@ -3044,7 +3044,7 @@ rg -n "AllowIps|allow_ips|TokenAuth|EditTokenModal|TokensColumnDefs|IsIpInCIDRLi
 
 ### Step-23: 后端模型、持久化与鉴权链路追加 `deny_ips`
 
-**Status:** In Progress
+**Status:** Done
 
 **AC:**
 
@@ -3071,10 +3071,15 @@ go test ./controller ./model ./middleware -run "Test.*Token.*IP|Test.*TokenAuth.
 **Iteration Log:**
 
 - Attempt-1 (2026-04-16): 现状已确认：`allow_ips` 现由 `c.ShouldBindJSON(&token)` 直绑到 `model.Token`，实际拦截位于 `middleware/auth.go:351-365`；新增黑名单可沿用同一链路扩展。
+- Attempt-2 (2026-04-16): 先按 TDD 补 `controller/token_test.go` 与新的 `middleware/auth_token_ip_test.go`，让 `deny_ips` 持久化和黑名单优先语义先变红，再进入实现。
+- Result-1 (2026-04-16): 后端数据链路已补齐：`model.Token` 新增 `DenyIps *string`，`controller/token.go` 的 Add/Update 链路可接收、持久化并回传 `deny_ips`，`model.Token.Update()` 也已将 `deny_ips` 纳入字段白名单。
+- Result-2 (2026-04-16): 鉴权链路已改为“先黑名单、后白名单”，复用现有 `common.IsIpInCIDRList()` 解析，不额外引入新的 IP 来源头；命中黑名单和白名单不匹配都返回 403，其中黑名单/白名单拒绝都附带 `access_denied` 错误码。
+- Result-3 (2026-04-16): 后端 i18n 已补齐 `token.client_ip_invalid`、`token.ip_blacklisted`、`token.ip_not_allowed` 三个 key，并同步到 `en / zh-CN / zh-TW` locale；旧的硬编码中文错误已移除。
+- Result-4 (2026-04-16): SQLite 历史测试库通过 `ensureTokenIPRuleColumns()` 兼容旧表结构；正式库继续依赖 `AutoMigrate(&Token{})` 自动补列，不需要额外一次性迁移。
 
 ### Step-24: 前端令牌设置与列表展示补齐黑名单入口
 
-**Status:** Not Started
+**Status:** Done
 
 **AC:**
 
@@ -3131,6 +3136,12 @@ go test ./middleware -run "Test.*TokenAuth.*IP.*" -count=1
 **Iteration Log:**
 
 - Attempt-1 (2026-04-16): 已确认现有 `controller/token_test.go` 具备 Add/Update token 的测试基线，可直接追加 `deny_ips` 相关断言；中间件侧需要补新的 token auth IP 场景用例。
+- Attempt-2 (2026-04-16): 新增失败测试后，控制器测试先按预期 red，失败点为 `deny_ips` 落库为空；中间件测试第一次误用了带 `-` 的 token key，触发了现有 Authorization 解析逻辑的截断，已调整测试数据后重新获得有效 red。
+- Result-1 (2026-04-16): 新增控制器测试 `TestAddTokenPersistsDenyIps`、`TestUpdateTokenPersistsDenyIps`，覆盖新增/更新时的 `deny_ips` 持久化。
+- Result-2 (2026-04-16): 新增中间件测试 `TestTokenAuthRejectsDeniedIP`、`TestTokenAuthAllowsWhitelistedIPWhenNotDenied`、`TestTokenAuthPrefersDenyListOverAllowList`、`TestTokenAuthKeepsAllowListBehaviorWithoutDenyList`，覆盖黑名单命中、黑名单优先、白名单放行和“无黑名单时保持现有白名单语义”。
+- Result-3 (2026-04-16): 定向回归已通过：
+  - `go test ./controller -run 'Test(GetAllTokensMasksKeyInResponse|SearchTokensMasksKeyInResponse|GetTokenMasksKeyInResponse|UpdateTokenMasksKeyInResponse|GetTokenKeyRequiresOwnershipAndReturnsFullKey|AddTokenPersistsPeriodQuotaSettings|AddTokenPersistsDenyIps|UpdateTokenResetsPeriodQuotaWindowWhenModeChanges|UpdateTokenPersistsDenyIps|AddTokenRejectsInvalidPeriodQuotaValues)$' -count=1`
+  - `go test ./middleware -run 'TestTokenAuth(RejectsDeniedIP|AllowsWhitelistedIPWhenNotDenied|PrefersDenyListOverAllowList|KeepsAllowListBehaviorWithoutDenyList)$' -count=1`
 
 ### Step-26: 功能收口、页面验收与计划回写
 

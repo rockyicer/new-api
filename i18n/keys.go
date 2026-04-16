@@ -54,6 +54,9 @@ const (
 	MsgTokenExhausted            = "token.exhausted"
 	MsgTokenStatusUnavailable    = "token.status_unavailable"
 	MsgTokenDbError              = "token.db_error"
+	MsgTokenClientIPInvalid      = "token.client_ip_invalid"
+	MsgTokenIPBlacklisted        = "token.ip_blacklisted"
+	MsgTokenIPNotAllowed         = "token.ip_not_allowed"
 )
 
 // Redemption related messages
