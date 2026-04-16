@@ -34,12 +34,18 @@ import {
   updateChartSpec,
   updateMapValue,
   initializeMaps,
+  processUserData,
 } from '../../helpers/dashboard';
 import {
   aggregateQuotaDataByDayAndModel,
   buildDailyQuotaBarSeries,
   buildDailyQuotaLineSeries,
 } from '../../helpers/dashboard-chart-data';
+
+const USER_COLORS = [
+  '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
+  '#ec4899', '#06b6d4', '#f97316', '#6366f1', '#14b8a6',
+];
 
 export const useDashboardCharts = (
   consumptionChartsQuotaData,
@@ -53,7 +59,7 @@ export const useDashboardCharts = (
   setModelColors,
   t,
 ) => {
-  // ========== 图表规格状态 ==========
+  // ========== Chart specs ==========
   const [spec_pie, setSpecPie] = useState({
     type: 'pie',
     data: [
@@ -185,7 +191,6 @@ export const useDashboardCharts = (
     },
   });
 
-  // 模型消耗趋势折线图
   const [spec_model_line, setSpecModelLine] = useState({
     type: 'line',
     data: [
@@ -203,7 +208,7 @@ export const useDashboardCharts = (
     },
     title: {
       visible: true,
-      text: t('模型消耗趋势'),
+      text: t('调用趋势'),
       subtext: '',
     },
     tooltip: {
@@ -243,7 +248,6 @@ export const useDashboardCharts = (
     },
   });
 
-  // 模型调用次数排行柱状图
   const [spec_rank_bar, setSpecRankBar] = useState({
     type: 'bar',
     data: [
@@ -287,7 +291,83 @@ export const useDashboardCharts = (
     },
   });
 
-  // ========== 数据处理函数 ==========
+  // ========== Admin: user consumption ranking ==========
+  const [spec_user_rank, setSpecUserRank] = useState({
+    type: 'bar',
+    data: [{ id: 'userRankData', values: [] }],
+    xField: 'rawQuota',
+    yField: 'User',
+    seriesField: 'User',
+    direction: 'horizontal',
+    legends: { visible: false },
+    title: {
+      visible: true,
+      text: t('用户消耗排行'),
+      subtext: '',
+    },
+    bar: {
+      state: { hover: { stroke: '#000', lineWidth: 1 } },
+    },
+    label: {
+      visible: true,
+      position: 'outside',
+      formatMethod: (value, datum) => renderQuota(datum['rawQuota'] || 0, 2),
+    },
+    axes: [{
+      orient: 'left',
+      type: 'band',
+      label: { visible: true },
+    }, {
+      orient: 'bottom',
+      type: 'linear',
+      visible: false,
+    }],
+    tooltip: {
+      mark: {
+        content: [{
+          key: (datum) => datum['User'],
+          value: (datum) => renderQuota(datum['rawQuota'] || 0, 4),
+        }],
+      },
+    },
+    color: { type: 'ordinal', range: USER_COLORS },
+  });
+
+  // ========== Admin: user consumption trend ==========
+  const [spec_user_trend, setSpecUserTrend] = useState({
+    type: 'area',
+    data: [{ id: 'userTrendData', values: [] }],
+    xField: 'Time',
+    yField: 'rawQuota',
+    seriesField: 'User',
+    stack: false,
+    legends: { visible: true, selectMode: 'single' },
+    title: {
+      visible: true,
+      text: t('用户消耗趋势'),
+      subtext: '',
+    },
+    axes: [{
+      orient: 'left',
+      label: {
+        formatMethod: (value) => renderQuota(value, 2),
+      },
+    }],
+    area: { style: { fillOpacity: 0.15 } },
+    line: { style: { lineWidth: 2 } },
+    point: { visible: false },
+    tooltip: {
+      mark: {
+        content: [{
+          key: (datum) => datum['User'],
+          value: (datum) => renderQuota(datum['rawQuota'] || 0, 4),
+        }],
+      },
+    },
+    color: { type: 'ordinal', range: USER_COLORS },
+  });
+
+  // ========== Data transforms ==========
   const generateModelColors = useCallback((uniqueModels, modelColors) => {
     const newModelColors = {};
     Array.from(uniqueModels).forEach((modelName) => {
@@ -431,7 +511,7 @@ export const useDashboardCharts = (
         'barData',
       );
 
-      // ===== 模型调用次数折线图 =====
+      // ===== Model invocation trend =====
       let modelLineData = [];
       chartTimePoints.forEach((time) => {
         const timeData = Array.from(uniqueModels).map((model) => {
@@ -447,7 +527,7 @@ export const useDashboardCharts = (
       });
       modelLineData.sort((a, b) => a.Time.localeCompare(b.Time));
 
-      // ===== 模型调用次数排行柱状图 =====
+      // ===== Model invocation ranking =====
       const rankData = Array.from(modelTotals)
         .map(([model, count]) => ({
           Model: model,
@@ -491,7 +571,52 @@ export const useDashboardCharts = (
     ],
   );
 
-  // ========== 初始化图表主题 ==========
+  // ========== User-level chart transforms ==========
+  const updateUserChartData = useCallback(
+    (data) => {
+      const { rankingData, trendData: userTrend } = processUserData(
+        data,
+        dataExportDefaultTime,
+        10,
+      );
+
+      const userRankValues = rankingData.map((item) => ({
+        User: item.User,
+        rawQuota: item.Quota,
+        Quota: getQuotaWithUnit(item.Quota, 4),
+      })).sort((a, b) => b.rawQuota - a.rawQuota);
+
+      const totalUserQuota = rankingData.reduce((s, i) => s + i.Quota, 0);
+
+      setSpecUserRank((prev) => ({
+        ...prev,
+        data: [{ id: 'userRankData', values: userRankValues }],
+        title: {
+          ...prev.title,
+          subtext: `${t('总计')}：${renderQuota(totalUserQuota, 2)}`,
+        },
+      }));
+
+      const userTrendValues = userTrend.map((item) => ({
+        Time: item.Time,
+        User: item.User,
+        rawQuota: item.Quota,
+        Usage: item.Quota ? getQuotaWithUnit(item.Quota, 4) : 0,
+      }));
+
+      setSpecUserTrend((prev) => ({
+        ...prev,
+        data: [{ id: 'userTrendData', values: userTrendValues }],
+        title: {
+          ...prev.title,
+          subtext: `${t('总计')}：${renderQuota(totalUserQuota, 2)}`,
+        },
+      }));
+    },
+    [dataExportDefaultTime, t],
+  );
+
+  // ========== Initialize chart theme ==========
   useEffect(() => {
     initVChartSemiTheme({
       isWatchingThemeSwitch: true,
@@ -503,15 +628,15 @@ export const useDashboardCharts = (
   }, [consumptionChartsQuotaData, updateConsumptionChartData]);
 
   return {
-    // 图表规格
     spec_pie,
     spec_line,
     spec_model_line,
     spec_rank_bar,
-
-    // 函数
+    spec_user_rank,
+    spec_user_trend,
     updateChartData,
     updateConsumptionChartData,
+    updateUserChartData,
     generateModelColors,
   };
 };

@@ -33,13 +33,13 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   const isMobile = useIsMobile();
   const initialized = useRef(false);
 
-  // ========== 基础状态 ==========
+  // ========== Base state ==========
   const [loading, setLoading] = useState(false);
   const [greetingVisible, setGreetingVisible] = useState(false);
   const [searchModalVisible, setSearchModalVisible] = useState(false);
   const showLoading = useMinimumLoadingTime(loading);
 
-  // ========== 输入状态 ==========
+  // ========== Input state ==========
   const [inputs, setInputs] = useState({
     username: '',
     token_name: '',
@@ -53,7 +53,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   const [dataExportDefaultTime, setDataExportDefaultTime] =
     useState(getDefaultTime());
 
-  // ========== 数据状态 ==========
+  // ========== Data state ==========
   const [quotaData, setQuotaData] = useState([]);
   const [consumptionChartsQuotaData, setConsumptionChartsQuotaData] = useState(
     [],
@@ -65,10 +65,10 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   const [lineData, setLineData] = useState([]);
   const [modelColors, setModelColors] = useState({});
 
-  // ========== 图表状态 ==========
+  // ========== Chart state ==========
   const [activeChartTab, setActiveChartTab] = useState('1');
 
-  // ========== 趋势数据 ==========
+  // ========== Trend data ==========
   const [trendData, setTrendData] = useState({
     balance: [],
     usedQuota: [],
@@ -80,16 +80,16 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     tpm: [],
   });
 
-  // ========== Uptime 数据 ==========
+  // ========== Uptime data ==========
   const [uptimeData, setUptimeData] = useState([]);
   const [uptimeLoading, setUptimeLoading] = useState(false);
   const [activeUptimeTab, setActiveUptimeTab] = useState('');
 
-  // ========== 常量 ==========
+  // ========== Constants ==========
   const now = new Date();
   const isAdminUser = isAdmin();
 
-  // ========== Panel enable flags ==========
+  // ========== Panel flags ==========
   const apiInfoEnabled = statusState?.status?.api_info_enabled ?? true;
   const announcementsEnabled =
     statusState?.status?.announcements_enabled ?? true;
@@ -99,7 +99,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   const hasApiInfoPanel = apiInfoEnabled;
   const hasInfoPanels = announcementsEnabled || faqEnabled || uptimeEnabled;
 
-  // ========== Memoized Values ==========
+  // ========== Memoized values ==========
   const timeOptions = useMemo(
     () =>
       TIME_OPTIONS.map((option) => ({
@@ -141,7 +141,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     return `👋${greeting}，${username}`;
   }, [t, userState?.user?.username]);
 
-  // ========== 回调函数 ==========
+  // ========== Callbacks ==========
   const handleInputChange = useCallback((value, name) => {
     if (name === 'data_export_default_time') {
       setDataExportDefaultTime(value);
@@ -159,7 +159,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     setSearchModalVisible(false);
   }, []);
 
-  // ========== API 调用函数 ==========
+  // ========== API calls ==========
   const loadQuotaData = useCallback(async () => {
     setLoading(true);
     try {
@@ -242,6 +242,27 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     }
   }, [activeUptimeTab]);
 
+  const loadUserQuotaData = useCallback(async () => {
+    if (!isAdminUser) return [];
+    try {
+      const { start_timestamp, end_timestamp } = inputs;
+      const localStartTimestamp = Date.parse(start_timestamp) / 1000;
+      const localEndTimestamp = Date.parse(end_timestamp) / 1000;
+      const url = `/api/data/users?start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}`;
+      const res = await API.get(url);
+      const { success, message, data } = res.data;
+      if (success) {
+        return data || [];
+      } else {
+        showError(message);
+        return [];
+      }
+    } catch (err) {
+      console.error(err);
+      return [];
+    }
+  }, [inputs, isAdminUser]);
+
   const getUserData = useCallback(async () => {
     let res = await API.get(`/api/user/self`);
     const { success, message, data } = res.data;
@@ -286,16 +307,16 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   }, [getUserData]);
 
   return {
-    // 基础状态
+    // Base state
     loading: showLoading,
     greetingVisible,
     searchModalVisible,
 
-    // 输入状态
+    // Input state
     inputs,
     dataExportDefaultTime,
 
-    // 数据状态
+    // Data state
     quotaData,
     consumptionChartsQuotaData,
     consumeQuota,
@@ -311,21 +332,21 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     modelColors,
     setModelColors,
 
-    // 图表状态
+    // Chart state
     activeChartTab,
     setActiveChartTab,
 
-    // 趋势数据
+    // Trend data
     trendData,
     setTrendData,
 
-    // Uptime 数据
+    // Uptime data
     uptimeData,
     uptimeLoading,
     activeUptimeTab,
     setActiveUptimeTab,
 
-    // 计算值
+    // Derived values
     timeOptions,
     performanceMetrics,
     getGreeting,
@@ -337,18 +358,19 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     faqEnabled,
     uptimeEnabled,
 
-    // 函数
+    // Actions
     handleInputChange,
     showSearchModal,
     handleCloseModal,
     loadQuotaData,
     loadConsumptionChartsQuotaData,
+    loadUserQuotaData,
     loadUptimeData,
     getUserData,
     refresh,
     handleSearchConfirm,
 
-    // 导航和翻译
+    // Navigation and i18n
     navigate,
     t,
     isMobile,
