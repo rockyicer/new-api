@@ -2987,3 +2987,176 @@ bun run build
 - Result-1 (2026-04-16): 总验证已在 `rockyicer` 上通过：`go test ./controller ./model ./router -run '^$' -count=1`、`go test ./service ./setting/... -run '^$' -count=1`、`cd web && bun run build`。
 - Result-2 (2026-04-16): 目标达成：Dashboard 卡片/图表/管理员分析位置靠 upstream，API 信息复制按钮保留 upstream 行为；Ratio Settings 已切换到 `ModelPricingCombined` 并接受页面级 locale 更新；Footer/Layout 吸收了更多 upstream polish，同时顶部导航品牌名和入口结构、页脚文案与链接、About/Contact/Docs 页面与跳转、Logo 和站点名仍保持 JustAPI。
 - Result-3 (2026-04-16): 本轮没有遗留“实在无法解决”的冲突；唯一需要调整执行顺序的点是 Ratio Settings 批次从原计划的“先摘 `78e4cb3c`”改为“先 `dc83c4af` 再 `c2006093` 再 `78e4cb3c`”，原因已记录在 Step-19。
+
+## 16. 令牌设置追加：IP 黑名单（2026-04-16）
+
+### 16.1 需求摘要
+
+- 在令牌设置的“访问限制”区域新增 `IP 黑名单` 配置项。
+- 凡是命中黑名单的客户端 IP，均不允许继续使用该令牌调用大模型接口。
+- 保留现有 `IP 白名单（支持 CIDR 表达式）` 能力，并与新黑名单共同工作。
+
+### 16.2 默认实现决策（如无进一步指示，按此执行）
+
+- 新字段命名默认采用 `deny_ips`，与现有 `allow_ips` 对称。
+- 输入格式与白名单完全一致：支持单 IP、CIDR 表达式、一行一个。
+- 黑名单优先级高于白名单：
+  - 若命中黑名单，直接拒绝；
+  - 若未命中黑名单且配置了白名单，则仍需继续满足白名单。
+- 首版只限制“使用令牌访问模型/relay 接口”的请求，不扩展到令牌管理页、用量查询页或普通控制台页面。
+- 客户端 IP 继续复用 `c.ClientIP()` 与现有网关/反代链路，不单独引入新的来源头解析逻辑。
+- 令牌列表页沿用现有 `IP限制` 列，但展示逻辑升级为可区分“白名单 / 黑名单 / 同时配置”的摘要，避免配置了黑名单却在列表中完全不可见。
+
+### 16.3 待定参数（当前不阻塞计划落盘）
+
+- 若你后续希望“黑名单也要拦截令牌用量查询接口”，可在实现阶段把范围从 relay-only 扩到 token usage/read-only session；当前计划默认不做。
+- 若你希望“黑白名单冲突时以白名单优先”，需要改写 `16.2` 的默认优先级；当前计划默认“黑名单优先拒绝”。
+
+### Step-22: 固化 IP 黑名单的数据契约与访问语义
+
+**Status:** Done
+
+**AC:**
+
+- 明确新字段名、JSON 字段名、默认值和与 `allow_ips` 的组合行为。
+- 明确拦截范围：仅限令牌访问模型接口，不影响令牌管理与普通前端页面。
+- 明确优先级：黑名单先判定，白名单后判定。
+- 明确错误返回语义，避免继续堆叠新的硬编码中文错误。
+
+**Verification:**
+
+```powershell
+rg -n "AllowIps|allow_ips|TokenAuth|EditTokenModal|TokensColumnDefs|IsIpInCIDRList" model controller middleware web/src -S
+```
+
+**Deliverables:**
+
+- 字段与优先级约定
+- 访问范围边界
+- 前后端落点清单
+
+**Iteration Log:**
+
+- Attempt-1 (2026-04-16): 已完成现状梳理；确认现有令牌白名单落点在 `model/token.go`、`controller/token.go`、`middleware/auth.go`、`web/src/components/table/tokens/modals/EditTokenModal.jsx`、`web/src/components/table/tokens/TokensColumnDefs.jsx`。
+- Result-1 (2026-04-16): 数据契约已冻结：新字段采用 `deny_ips`，JSON 字段名同名，默认空字符串；输入格式与 `allow_ips` 保持一致，支持单 IP 与 CIDR，一行一个。
+- Result-2 (2026-04-16): 访问语义已冻结：首版仅拦截令牌访问模型/relay 接口；判定顺序为“先黑名单、后白名单”；命中黑名单直接拒绝，未命中黑名单但配置了白名单时仍需继续满足白名单。
+- Result-3 (2026-04-16): 错误返回策略已冻结：为“客户端 IP 无法解析 / 命中令牌 IP 黑名单 / 不在令牌白名单中”补充 i18n key，而不是继续沿用硬编码中文错误消息。
+
+### Step-23: 后端模型、持久化与鉴权链路追加 `deny_ips`
+
+**Status:** In Progress
+
+**AC:**
+
+- 在 `model.Token` 中新增 `DenyIps *string \`json:"deny_ips" gorm:"default:''"\``。
+- 为黑名单提供与白名单对称的解析能力；优先复用现有 `GetIpLimits()` / `common.IsIpInCIDRList()` 的思路，避免重复造一套 CIDR 解析逻辑。
+- `controller/token.go` 的新增/更新链路能正确接收、持久化并回传 `deny_ips`。
+- `model.Token.Update()` 的字段白名单包含 `deny_ips`，并保持 token cache 失效/回填逻辑完整。
+- `middleware/auth.go` 在令牌鉴权阶段先判断黑名单，再判断白名单；命中黑名单时返回 403。
+- 为“客户端 IP 无法解析 / 命中令牌 IP 黑名单 / 不在令牌白名单中”补充明确的 i18n 消息 key，避免新增硬编码文案。
+- 确认 SQLite / MySQL / PostgreSQL 下新增列行为安全；若 `AutoMigrate` 在测试/历史库场景下不足，再补充兼容性回填或测试 helper。
+
+**Verification:**
+
+```powershell
+go test ./controller ./model ./middleware -run "Test.*Token.*IP|Test.*TokenAuth.*" -count=1
+```
+
+**Deliverables:**
+
+- 后端字段与鉴权改造方案
+- 错误消息与返回码约定
+- 数据库兼容策略
+
+**Iteration Log:**
+
+- Attempt-1 (2026-04-16): 现状已确认：`allow_ips` 现由 `c.ShouldBindJSON(&token)` 直绑到 `model.Token`，实际拦截位于 `middleware/auth.go:351-365`；新增黑名单可沿用同一链路扩展。
+
+### Step-24: 前端令牌设置与列表展示补齐黑名单入口
+
+**Status:** Not Started
+
+**AC:**
+
+- `EditTokenModal.jsx` 的初始化表单值新增 `deny_ips: ''`。
+- 在“访问限制”卡片中新增 `IP黑名单（支持CIDR表达式）` 文本域，位置与 `allow_ips` 同区块，文案含义清晰且不与白名单混淆。
+- 新增占位文案与说明文案，例如“禁止的 IP，一行一个，不填写则不限制”“命中黑名单的 IP 将被拒绝使用该令牌调用模型接口”。
+- `TokensColumnDefs.jsx` 的 `IP限制` 列能展示黑名单配置摘要，避免用户只能在编辑抽屉里看到黑名单。
+- 补齐相关前端 i18n key，至少覆盖 `zh-CN / zh-TW / en / fr / ja / ru / vi`。
+
+**Verification:**
+
+```powershell
+cd web
+bun run build
+```
+
+**Deliverables:**
+
+- 令牌编辑弹窗黑名单入口
+- 列表摘要展示方案
+- 前端多语言 key 清单
+
+**Iteration Log:**
+
+- Attempt-1 (2026-04-16): 已确认当前白名单 UI 落点在 `EditTokenModal.jsx:713-725`，现有列表展示落点在 `TokensColumnDefs.jsx:616-619`；黑名单可在同一“访问限制”卡片中对称追加。
+
+### Step-25: 为黑名单补定向测试与回归用例
+
+**Status:** Not Started
+
+**AC:**
+
+- 新增 controller 测试，覆盖 `deny_ips` 在 Add/Update 过程中的持久化。
+- 新增 middleware 或等效集成测试，覆盖：
+  - 命中黑名单时拒绝；
+  - 未命中黑名单且满足白名单时放行；
+  - 同时命中黑白名单时按“黑名单优先”拒绝；
+  - 黑名单为空时不改变现有白名单行为。
+- 保持现有令牌相关测试不回归。
+
+**Verification:**
+
+```powershell
+go test ./controller -run "Test(Add|Update)Token.*DenyIps|TestUpdateTokenMasksKeyInResponse" -count=1
+go test ./middleware -run "Test.*TokenAuth.*IP.*" -count=1
+```
+
+**Deliverables:**
+
+- 黑名单持久化测试
+- 黑白名单优先级测试
+- 令牌鉴权回归结果
+
+**Iteration Log:**
+
+- Attempt-1 (2026-04-16): 已确认现有 `controller/token_test.go` 具备 Add/Update token 的测试基线，可直接追加 `deny_ips` 相关断言；中间件侧需要补新的 token auth IP 场景用例。
+
+### Step-26: 功能收口、页面验收与计划回写
+
+**Status:** Not Started
+
+**AC:**
+
+- 在令牌设置弹窗中可以看到并保存 `IP 黑名单`。
+- 使用命中黑名单的 IP 调用模型接口时被拒绝，且返回信息清晰。
+- 未命中黑名单的正常 IP 不会被误伤。
+- `task_plan.md` 记录最终实现结果、冲突处理和验证结论。
+
+**Verification:**
+
+```powershell
+go test ./controller ./model ./middleware -run "Test.*Token.*IP|Test.*TokenAuth.*" -count=1
+cd web
+bun run build
+```
+
+**Deliverables:**
+
+- 功能验收记录
+- 回归验证记录
+- 最终收口说明
+
+**Iteration Log:**
+
+- Attempt-1 (2026-04-16): 当前仅追加计划，尚未进入实现阶段；执行时将优先按 Step-23 -> Step-24 -> Step-25 -> Step-26 推进。
