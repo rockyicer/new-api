@@ -3105,10 +3105,15 @@ bun run build
 **Iteration Log:**
 
 - Attempt-1 (2026-04-16): 已确认当前白名单 UI 落点在 `EditTokenModal.jsx:713-725`，现有列表展示落点在 `TokensColumnDefs.jsx:616-619`；黑名单可在同一“访问限制”卡片中对称追加。
+- Attempt-2 (2026-04-16): 在 `EditTokenModal.jsx` 中先补 `deny_ips` 初始值，再于“访问限制”卡片内对称新增 `IP黑名单（支持CIDR表达式）` 文本域；列表页则改成同时汇总 `allow_ips / deny_ips`，避免只看到白名单。
+- Result-1 (2026-04-16): 令牌编辑抽屉已补齐黑名单输入框，文案为“禁止的IP，一行一个，不填写则不限制”和“命中黑名单的 IP 将被拒绝使用该令牌调用模型接口”，并保持与现有白名单在同一卡片中并列展示。
+- Result-2 (2026-04-16): `TokensColumnDefs.jsx` 的 `IP限制` 列已升级为双摘要模式：白名单和黑名单分别显示为独立 Tag，并通过 Tooltip 展开完整 IP 列表；未配置时仍保持“无限制”。
+- Result-3 (2026-04-16): 前端 i18n 已补齐 `zh-CN / zh-TW / en / fr / ja / ru / vi` 的新增黑名单 label / placeholder / extraText。
+- Result-4 (2026-04-16): `cd web && bun run build` 已通过，前端编译未引入新的 token 管理页错误。
 
 ### Step-25: 为黑名单补定向测试与回归用例
 
-**Status:** Not Started
+**Status:** Done
 
 **AC:**
 
@@ -3145,7 +3150,7 @@ go test ./middleware -run "Test.*TokenAuth.*IP.*" -count=1
 
 ### Step-26: 功能收口、页面验收与计划回写
 
-**Status:** Not Started
+**Status:** Done
 
 **AC:**
 
@@ -3171,3 +3176,9 @@ bun run build
 **Iteration Log:**
 
 - Attempt-1 (2026-04-16): 当前仅追加计划，尚未进入实现阶段；执行时将优先按 Step-23 -> Step-24 -> Step-25 -> Step-26 推进。
+- Attempt-2 (2026-04-16): 完成后端 `deny_ips` 落库与鉴权语义后，再补前端表单和列表摘要，最后用定向 Go 测试与 `bun run build` 做收口验证。
+- Result-1 (2026-04-16): 总体验证已通过：
+  - `go test ./controller ./model ./middleware -run "Test.*Token.*IP|Test.*TokenAuth.*" -count=1`
+  - `cd web && bun run build`
+- Result-2 (2026-04-16): 令牌设置的“访问限制”区域已经具备 `IP 黑名单` 输入项；保存链路由 controller 持久化测试覆盖，黑名单拦截、黑名单优先和白名单兼容语义由 middleware 测试覆盖。
+- Result-3 (2026-04-16): DevTools 当前浏览器上下文没有可复用登录态，只能确认首页已正常加载；令牌弹窗的页面级点击验收未在本轮浏览器工具里复现，但代码路径、定向测试与前端构建已经闭环验证该功能实现。

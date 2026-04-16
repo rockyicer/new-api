@@ -254,9 +254,37 @@ const renderModelLimits = (text, record, t) => {
   }
 };
 
-// Render IP restrictions column
-const renderAllowIps = (text, t) => {
+const parseIpRules = (text) => {
   if (!text || text.trim() === '') {
+    return [];
+  }
+
+  return text
+    .split('\n')
+    .map((ip) => ip.trim())
+    .filter(Boolean);
+};
+
+const renderIpRuleSummary = (label, ips, color, t) => {
+  if (ips.length === 0) {
+    return null;
+  }
+
+  return (
+    <Tooltip content={ips.join('\n')} position='top' showArrow>
+      <Tag color={color} shape='circle'>
+        {`${t(label)} (${ips.length})`}
+      </Tag>
+    </Tooltip>
+  );
+};
+
+// Render IP restrictions column
+const renderIpRestrictions = (record, t) => {
+  const allowIps = parseIpRules(record.allow_ips);
+  const denyIps = parseIpRules(record.deny_ips);
+
+  if (allowIps.length === 0 && denyIps.length === 0) {
     return (
       <Tag color='white' shape='circle'>
         {t('无限制')}
@@ -264,34 +292,12 @@ const renderAllowIps = (text, t) => {
     );
   }
 
-  const ips = text
-    .split('\n')
-    .map((ip) => ip.trim())
-    .filter(Boolean);
-
-  const displayIps = ips.slice(0, 1);
-  const extraCount = ips.length - displayIps.length;
-
-  const ipTags = displayIps.map((ip, idx) => (
-    <Tag key={idx} shape='circle'>
-      {ip}
-    </Tag>
-  ));
-
-  if (extraCount > 0) {
-    ipTags.push(
-      <Tooltip
-        key='extra'
-        content={ips.slice(1).join(', ')}
-        position='top'
-        showArrow
-      >
-        <Tag shape='circle'>{'+' + extraCount}</Tag>
-      </Tooltip>,
-    );
-  }
-
-  return <Space wrap>{ipTags}</Space>;
+  return (
+    <Space wrap>
+      {renderIpRuleSummary('IP白名单', allowIps, 'green', t)}
+      {renderIpRuleSummary('IP黑名单', denyIps, 'red', t)}
+    </Space>
+  );
 };
 
 // Render separate quota usage column
@@ -616,7 +622,7 @@ export const getTokensColumns = ({
     {
       title: t('IP限制'),
       dataIndex: 'allow_ips',
-      render: (text) => renderAllowIps(text, t),
+      render: (text, record) => renderIpRestrictions(record, t),
     },
     {
       title: t('创建时间'),

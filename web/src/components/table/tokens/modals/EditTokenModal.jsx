@@ -83,6 +83,7 @@ const EditTokenModal = (props) => {
     model_limits_enabled: false,
     model_limits: [],
     allow_ips: '',
+    deny_ips: '',
     group: '',
     cross_group_retry: false,
     tokenCount: 1,
@@ -720,6 +721,18 @@ const EditTokenModal = (props) => {
                       extraText={t(
                         '请勿过度信任此功能，IP可能被伪造，请配合nginx和cdn等网关使用',
                       )}
+                      showClear
+                      style={{ width: '100%' }}
+                    />
+                  </Col>
+                  <Col span={24}>
+                    <Form.TextArea
+                      field='deny_ips'
+                      label={t('IP黑名单（支持CIDR表达式）')}
+                      placeholder={t('禁止的IP，一行一个，不填写则不限制')}
+                      autosize
+                      rows={1}
+                      extraText={t('命中黑名单的 IP 将被拒绝使用该令牌调用模型接口')}
                       showClear
                       style={{ width: '100%' }}
                     />
