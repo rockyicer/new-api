@@ -2829,7 +2829,8 @@ bun run build
 **Iteration Log:**
 
 - Attempt-1 (2026-04-16): 将“每批次都要检查是否和当前代码冲突、是否功能正确”的要求固化为统一验证和回滚规则。
-- Result (2026-04-16): 已形成批次级验证、按提交点回滚和 locales 只补最小 key 的统一准则。
+- Result (2026-04-16): 已形成批次级验证、按提交点回滚和高冲突文件优先人工合流的统一准则。
+- Result-2 (2026-04-16): 基于用户对 Step-17 的确认，Ratio Settings 允许页级成片 locale 更新；冲突处理以“限定在该专题页面范围内的整页 JSON 合并”为准，不再强行退回到最小 key 策略。
 
 ### Step-17: 待用户回答的未知项
 
@@ -2861,7 +2862,7 @@ Write-Output "等待用户回答 Step-17 中的未知项后继续执行"
 
 ### Step-18: 执行 UI-1 Dashboard 专题集成
 
-**Status:** In Progress
+**Status:** Done
 
 **AC:**
 
@@ -2889,10 +2890,13 @@ bun run build
 
 - Attempt-1 (Planned): 先处理 `606a4eee + 77897a81`，确认后端 usedata 接口与图表逻辑一致，再决定是否补 `aafbd788` 与 `b2dd4acc`。
 - Attempt-2 (2026-04-16): 用户已确认 dashboard 顺序完全跟 upstream，并保留 copy button；按该决策进入实现阶段，优先整组集成 `606a4eee + 77897a81`，再补 `aafbd788`，并视 flicker 复现情况决定是否引入 `b2dd4acc`。
+- Attempt-3 (2026-04-16): 在 `sync-upstream-ui-2026-04-16` 上依次引入 `606a4eee`、`77897a81`、`aafbd788`、`b2dd4acc`；发生冲突的文件集中在 `web/src/components/dashboard/index.jsx`、`web/src/components/dashboard/ChartsPanel.jsx`、`web/src/hooks/dashboard/useDashboardCharts.jsx`、`web/src/hooks/dashboard/useDashboardData.js`。
+- Result-1 (2026-04-16): 冲突已人工收口：保留本地日消耗图数据链路，吸收 upstream 的管理员分析模块、图表顺序、卡片顺序和 API 信息复制按钮，并把本轮触及代码内的注释统一为英文。
+- Result-2 (2026-04-16): 验证通过 `go test ./controller ./model ./router -run '^$' -count=1` 和 `cd web && bun run build`；专题集成提交为 `b4d93c74`、`722621f3`、`1d0f0702`、`30c2ce5c`、`02b53fbb`，并已通过 `aa7ea9f6 merge: ui-1 dashboard upstream sync` 回合到 `rockyicer`。
 
 ### Step-19: 执行 UI-2 Ratio Settings 专题集成
 
-**Status:** Not Started
+**Status:** Done
 
 **AC:**
 
@@ -2916,10 +2920,14 @@ bun run build
 **Iteration Log:**
 
 - Attempt-1 (Planned): 先手工移植 `dc83c4af` 的页签结构与 `ModelPricingCombined` 入口，再局部摘取 `78e4cb3c` 的折叠规则区，最后补 `c2006093`。
+- Attempt-2 (2026-04-16): 先直接尝试 `78e4cb3c`，发现当前树尚未具备其依赖的 ratio 组件基线，且与 locale 文件发生大面积冲突，因此中止该次 cherry-pick，改为先切到结构升级提交。
+- Attempt-3 (2026-04-16): 改按 `dc83c4af` -> `c2006093` -> `78e4cb3c` 顺序执行；`dc83c4af` 和 `78e4cb3c` 仅在 6 个 locale 文件上冲突，使用 stage-2/stage-3 JSON 并集脚本合并，限定在 Ratio Settings 相关页面范围内。
+- Result-1 (2026-04-16): 已一次性切换到 `ModelPricingCombined` 结构，并补齐折叠规则布局与 `GroupTable` 输入体验修复；最终专题提交为 `03d443cc`、`acaec8c8`、`5ce8359c`。
+- Result-2 (2026-04-16): 验证通过 `go test ./controller ./service ./setting/... -run '^$' -count=1` 和 `cd web && bun run build`；本批次已通过 `b6b1411c merge: ui-2 ratio settings upstream sync` 回合到 `rockyicer`。
 
 ### Step-20: 执行 UI-3 Layout Polish 专题集成
 
-**Status:** Not Started
+**Status:** Done
 
 **AC:**
 
@@ -2943,10 +2951,13 @@ bun run build
 **Iteration Log:**
 
 - Attempt-1 (Planned): 只移植 `310d618a` 中与语义结构、class 名和响应式有关的 hunk；若 dashboard flicker 仍存在，再补 `b2dd4acc`。
+- Attempt-2 (2026-04-16): 直接 cherry-pick `310d618a`；`web/src/index.css` 自动合并，`web/src/components/layout/Footer.jsx` 出现单点冲突。
+- Result-1 (2026-04-16): 已保留 upstream 页脚容器结构、响应式布局和样式类细节，同时把品牌归属固定为 `JustAPI`，未让 upstream 的品牌文案覆盖本地页脚链接、站点名和 branding 语义。
+- Result-2 (2026-04-16): `cd web && bun run build` 已通过；浏览器快照验收确认首页页脚仍显示 `JustAPI` 品牌与既有链接结构。专题提交为 `62cfaa84`，并已通过 `b18b6f62 merge: ui-3 layout polish upstream sync` 回合到 `rockyicer`。
 
 ### Step-21: UI 专题总验证、回合与验收
 
-**Status:** Not Started
+**Status:** Done
 
 **AC:**
 
@@ -2972,3 +2983,7 @@ bun run build
 **Iteration Log:**
 
 - Attempt-1 (Planned): 待 `Step-17` 解锁并完成 `Step-18` ~ `Step-20` 后执行总验证，再决定分批回合还是一次性回合。
+- Attempt-2 (2026-04-16): 按用户要求执行“每个子批次通过后就回 `rockyicer`”；因此 `UI-1`、`UI-2`、`UI-3` 已分别通过 `aa7ea9f6`、`b6b1411c`、`b18b6f62` 合入主工作分支。
+- Result-1 (2026-04-16): 总验证已在 `rockyicer` 上通过：`go test ./controller ./model ./router -run '^$' -count=1`、`go test ./service ./setting/... -run '^$' -count=1`、`cd web && bun run build`。
+- Result-2 (2026-04-16): 目标达成：Dashboard 卡片/图表/管理员分析位置靠 upstream，API 信息复制按钮保留 upstream 行为；Ratio Settings 已切换到 `ModelPricingCombined` 并接受页面级 locale 更新；Footer/Layout 吸收了更多 upstream polish，同时顶部导航品牌名和入口结构、页脚文案与链接、About/Contact/Docs 页面与跳转、Logo 和站点名仍保持 JustAPI。
+- Result-3 (2026-04-16): 本轮没有遗留“实在无法解决”的冲突；唯一需要调整执行顺序的点是 Ratio Settings 批次从原计划的“先摘 `78e4cb3c`”改为“先 `dc83c4af` 再 `c2006093` 再 `78e4cb3c`”，原因已记录在 Step-19。
