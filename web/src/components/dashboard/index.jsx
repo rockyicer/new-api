@@ -57,10 +57,10 @@ const Dashboard = () => {
   const [userState, userDispatch] = useContext(UserContext);
   const [statusState, statusDispatch] = useContext(StatusContext);
 
-  // ========== 主要数据管理 ==========
+  // ========== Primary data ==========
   const dashboardData = useDashboardData(userState, userDispatch, statusState);
 
-  // ========== 图表管理 ==========
+  // ========== Charts ==========
   const dashboardCharts = useDashboardCharts(
     dashboardData.consumptionChartsQuotaData,
     dashboardData.dataExportDefaultTime,
@@ -74,7 +74,7 @@ const Dashboard = () => {
     dashboardData.t,
   );
 
-  // ========== 统计数据 ==========
+  // ========== Stats ==========
   const { groupedStatsData } = useDashboardStats(
     userState,
     dashboardData.consumeQuota,
@@ -86,7 +86,7 @@ const Dashboard = () => {
     dashboardData.t,
   );
 
-  // ========== 数据处理 ==========
+  // ========== Data loading ==========
   const loadUserData = async () => {
     if (dashboardData.isAdminUser) {
       const userData = await dashboardData.loadUserQuotaData();
@@ -120,7 +120,7 @@ const Dashboard = () => {
     await loadUserData();
   };
 
-  // ========== 数据准备 ==========
+  // ========== Derived data ==========
   const apiInfoData = statusState?.status?.api_info || [];
   const announcementData = (statusState?.status?.announcements || []).map(
     (item) => {
@@ -184,7 +184,7 @@ const Dashboard = () => {
         CHART_CONFIG={CHART_CONFIG}
       />
 
-      {/* API信息和图表面板 */}
+      {/* API info and chart panels */}
       <div className='mb-4'>
         <div
           className={`grid grid-cols-1 gap-4 ${dashboardData.hasApiInfoPanel ? 'lg:grid-cols-4' : ''}`}
@@ -220,11 +220,11 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* 系统公告和常见问答卡片 */}
+      {/* Announcements, FAQ, and uptime panels */}
       {dashboardData.hasInfoPanels && (
         <div className='mb-4'>
           <div className='grid grid-cols-1 lg:grid-cols-4 gap-4'>
-            {/* 公告卡片 */}
+            {/* Announcement card */}
             {dashboardData.announcementsEnabled && (
               <AnnouncementsPanel
                 announcementData={announcementData}
@@ -240,7 +240,7 @@ const Dashboard = () => {
               />
             )}
 
-            {/* 常见问答卡片 */}
+            {/* FAQ card */}
             {dashboardData.faqEnabled && (
               <FaqPanel
                 faqData={faqData}
@@ -251,7 +251,7 @@ const Dashboard = () => {
               />
             )}
 
-            {/* 服务可用性卡片 */}
+            {/* Uptime card */}
             {dashboardData.uptimeEnabled && (
               <UptimePanel
                 uptimeData={dashboardData.uptimeData}
@@ -278,7 +278,7 @@ const Dashboard = () => {
                 t={dashboardData.t}
               />
             )}
-          </div>
+        </div>
         </div>
       )}
     </div>

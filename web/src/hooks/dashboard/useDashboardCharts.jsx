@@ -59,7 +59,7 @@ export const useDashboardCharts = (
   setModelColors,
   t,
 ) => {
-  // ========== 图表规格状态 ==========
+  // ========== Chart specs ==========
   const [spec_pie, setSpecPie] = useState({
     type: 'pie',
     data: [
@@ -291,7 +291,7 @@ export const useDashboardCharts = (
     },
   });
 
-  // ========== Admin: 用户消耗排行 ==========
+  // ========== Admin: user consumption ranking ==========
   const [spec_user_rank, setSpecUserRank] = useState({
     type: 'bar',
     data: [{ id: 'userRankData', values: [] }],
@@ -333,7 +333,7 @@ export const useDashboardCharts = (
     color: { type: 'ordinal', range: USER_COLORS },
   });
 
-  // ========== Admin: 用户消耗趋势 ==========
+  // ========== Admin: user consumption trend ==========
   const [spec_user_trend, setSpecUserTrend] = useState({
     type: 'area',
     data: [{ id: 'userTrendData', values: [] }],
@@ -367,7 +367,7 @@ export const useDashboardCharts = (
     color: { type: 'ordinal', range: USER_COLORS },
   });
 
-  // ========== 数据处理函数 ==========
+  // ========== Data transforms ==========
   const generateModelColors = useCallback((uniqueModels, modelColors) => {
     const newModelColors = {};
     Array.from(uniqueModels).forEach((modelName) => {
@@ -511,7 +511,7 @@ export const useDashboardCharts = (
         'barData',
       );
 
-      // ===== 模型调用次数折线图 =====
+      // ===== Model invocation trend =====
       let modelLineData = [];
       chartTimePoints.forEach((time) => {
         const timeData = Array.from(uniqueModels).map((model) => {
@@ -527,7 +527,7 @@ export const useDashboardCharts = (
       });
       modelLineData.sort((a, b) => a.Time.localeCompare(b.Time));
 
-      // ===== 模型调用次数排行柱状图 =====
+      // ===== Model invocation ranking =====
       const rankData = Array.from(modelTotals)
         .map(([model, count]) => ({
           Model: model,
@@ -571,7 +571,7 @@ export const useDashboardCharts = (
     ],
   );
 
-  // ========== 用户维度图表数据处理 ==========
+  // ========== User-level chart transforms ==========
   const updateUserChartData = useCallback(
     (data) => {
       const { rankingData, trendData: userTrend } = processUserData(
@@ -616,7 +616,7 @@ export const useDashboardCharts = (
     [dataExportDefaultTime, t],
   );
 
-  // ========== 初始化图表主题 ==========
+  // ========== Initialize chart theme ==========
   useEffect(() => {
     initVChartSemiTheme({
       isWatchingThemeSwitch: true,
