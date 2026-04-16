@@ -201,6 +201,13 @@ bun run dev
 
 
 
+C:\Users\rockyicer\Documents\GitHub\codex\new-api\scripts\restart-dev.ps1
+
+
+go test ./... 没有全绿，当前失败是 model/token_period_quota_test.go (line 121) 的 TestValidateUserTokenResetsExpiredMonthlyPeriodQuotaWindow
+
+
+
 
 
 帮我设计一个A2的海报. 里面做如下的广告. 广告针对的是法语+荷兰语的大学生.
@@ -215,7 +222,7 @@ openai gpt 提供的codex 是及其强大的编程工具, 可以帮助你事半�
 3.促销时间 -> 当前你有几种方式可以选择.
 
 1.包月:
-60欧元. 我们提供 每日100欧的额度.  对应每天5000万的token, 实测 每日连续编程 >6小时没问题;
+50欧元. 我们提供 每日100欧的额度.  对应每天5000万的token, 实测 每日连续编程 >6小时没问题;
 100欧元. 我们提供 每日200欧的额度.  对应每天一亿的token, 实测 每日连续编程 >10小时没问题;
 2.不限时API, 用完为止.
 50欧元可以购买 价值官网1000欧元的API. 你可以选择 50/100/200/500 欧的档位
@@ -223,5 +230,6 @@ openai gpt 提供的codex 是及其强大的编程工具, 可以帮助你事半�
 目前处于促销期间, 发送学生证的照片到 icerrocky@gmail.com, 可以免费享受2天的API服务.
 
 可以加入我们的telegram群.
+
 
 
