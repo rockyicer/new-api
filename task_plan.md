@@ -2444,7 +2444,7 @@ bun run build
 
 ### Step-11: 批次 B 计划（可选）
 
-**Status:** Not Started
+**Status:** Done
 
 **AC:**
 
@@ -2473,10 +2473,15 @@ bun run build
 **Iteration Log:**
 
 - Attempt-1 (Planned): 先做 channel affinity，再做 log management / usage log UX，最后做 playground / ErrorBoundary，小步前进。
+- Attempt-2 (2026-04-16): 进入执行阶段；先从 `rockyicer` 切出 Batch B 集成分支，按 `channel affinity / log management / usage log / playground / frontend resilience` 五个子批次回引 upstream，并在每个子批次后执行冲突检查与验证。
+- Result-1 (2026-04-16): `channel affinity / retry` 子批次完成，成功带入 `skip-retry` 默认模板、规则列表展示、`include_model_name` 后端与 UI 开关，以及 preferred channel disabled 时 honor skip-retry 的修复；两次冲突都集中在 `web/src/pages/Setting/Operation/SettingsChannelAffinity.jsx`，已保留本地 `buildChannelAffinityRulePayload` 结构并手工合并通过；验证通过 `go test ./service/... ./setting/operation_setting/...` 与 `cd web && bun run build`。
+- Result-2 (2026-04-16): `log management / usage log UX` 子批次完成，成功带入服务端日志文件列表与清理 API、gin logger race 修复、局部删除失败提示、按钮对齐和 usage log `stream status` tooltip；冲突仅落在 `zh-CN/zh-TW` locale，按“保留当前分支既有 key，再补日志管理 key”策略手工合并；验证通过 `go test ./common ./controller ./logger ./router -run '^$'` 与 `cd web && bun run build`。
+- Result-3 (2026-04-16): `playground / ErrorBoundary` 子批次完成，成功带入 `max_tokens` 输入处理增强与页面级 `ErrorBoundary`；`ErrorBoundary` 冲突仅在 locale 文件尾部，已只补两条错误页文案，不混入尚未计划回引的其他 key；验证通过 `cd web && bun run build`。
+- Result-4 (2026-04-16): `EditChannelModal / token clipboard / regex ignored models` 子批次完成，成功带入 `regex:` 前缀忽略模型、复制连接信息、剪贴板自动填入及剪贴板错误保护；其中 `a706f002` 的“高级设置展开状态持久化”依赖 upstream 旧版折叠/侧滑结构，与你当前本地分段式 `EditChannelModal` 设计不兼容，直接合入会撕裂 JSX，因此最终保留前 3 个提交功能，不保留该持久化提交；验证通过 `go test ./controller -run ChannelUpstream -count=1` 与 `cd web && bun run build`。
 
 ### Step-12: 批次 C 计划（暂缓）
 
-**Status:** Not Started
+**Status:** Done
 
 **AC:**
 
@@ -2499,3 +2504,5 @@ git log --oneline rockyicer..upstream/main -- web/src/components/dashboard web/s
 **Iteration Log:**
 
 - Attempt-1 (Planned): 在批次 A/B 完成并稳定后，再决定是否开启 dashboard / settings / layout 的专题集成。
+- Result-1 (2026-04-16): 已完成专题评估并明确“不在本轮引入 Batch C”。原因是 dashboard / ratio settings / layout / branding 仍然与 `JustAPI` 定制区高度重叠，且这类提交大多是表现层重写而非底层能力补丁；在 Batch A/B 已吸收主要功能增强的前提下，继续合入只会显著提升冲突成本并增加回归风险。
+- Result-2 (2026-04-16): 本轮最终决策为“Step-12 完成为评估与冻结，而不是继续回引代码”。后续如要靠近 upstream UI，需要单独新开专题分支，围绕 `web/src/components/dashboard`、`web/src/components/layout`、`web/src/pages/Setting`、`web/src/i18n/locales/*` 做产品层再决策，而不是混入当前功能同步批次。
