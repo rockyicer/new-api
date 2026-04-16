@@ -2506,3 +2506,469 @@ git log --oneline rockyicer..upstream/main -- web/src/components/dashboard web/s
 - Attempt-1 (Planned): 在批次 A/B 完成并稳定后，再决定是否开启 dashboard / settings / layout 的专题集成。
 - Result-1 (2026-04-16): 已完成专题评估并明确“不在本轮引入 Batch C”。原因是 dashboard / ratio settings / layout / branding 仍然与 `JustAPI` 定制区高度重叠，且这类提交大多是表现层重写而非底层能力补丁；在 Batch A/B 已吸收主要功能增强的前提下，继续合入只会显著提升冲突成本并增加回归风险。
 - Result-2 (2026-04-16): 本轮最终决策为“Step-12 完成为评估与冻结，而不是继续回引代码”。后续如要靠近 upstream UI，需要单独新开专题分支，围绕 `web/src/components/dashboard`、`web/src/components/layout`、`web/src/pages/Setting`、`web/src/i18n/locales/*` 做产品层再决策，而不是混入当前功能同步批次。
+
+## 15. 靠近 Upstream UI 的专题集成计划（2026-04-16）
+
+### 15.1 需求理解摘要
+
+- 本专题承接 `Step-12` 的冻结结论，但目标已经从“是否继续引入”转为“如何在不冲掉 JustAPI branding 的前提下，继续靠近 upstream UI”。
+- 已确认的产品方向不是整站回退到 upstream，而是：
+  - `layout / dashboard` 尽量靠近 upstream；
+  - `branding` 继续保留 `JustAPI`；
+  - `ratio settings` 作为高价值但高冲突区，允许在专题分支中单独消化。
+- 本专题明确排除“把 upstream 品牌外观整块覆盖本地站点”的路径；允许吸收 upstream 的容器结构、图表逻辑、设置页组织方式、通用 CSS 细节，但不允许把 `JustAPI` 的品牌入口、Logo、站点名、页脚文案、About/Contact/Docs 页面替换掉。
+
+### 15.2 已确认边界
+
+- `branding` 必须保留的范围已经确认如下：
+  - 顶部导航的品牌名和入口结构；
+  - 页脚文案与链接；
+  - `About / Contact / Docs` 页面和跳转；
+  - Logo、站点名。
+- 因此，本专题中允许靠近 upstream 的区域是：
+  - dashboard 信息组织、图表逻辑、辅助面板交互；
+  - ratio settings 的页签结构、组合定价组件、可折叠规则区；
+  - layout 的容器语义、局部响应式与 CSS polish；
+  - footer 的语义结构和样式 class，但不包含品牌内容替换。
+- 本专题默认不碰：
+  - `HeaderBar` 中现有的站点品牌与主导航 IA；
+  - `PageLayout` 中 `syncDocumentBranding(getSystemName(), getLogo())` 这条品牌同步链；
+  - `Footer.jsx` 里的 JustAPI 专属文案、链接目标和分组名称；
+  - `About / Contact / Docs` 对应页面与路由入口。
+
+### 15.3 方案对比与选型
+
+- 方案 A（已选，推荐）：“品牌壳 + upstream 内容核”
+  - 保留当前 `HeaderBar / Footer / About / Contact / Docs` 作为品牌壳；
+  - 只把 `dashboard`、`RatioSetting`、部分 `PageLayout` 的结构和交互向 upstream 对齐；
+  - 对 `layout` 只吸收通用能力和样式 polish，不吸收 upstream 的品牌内容。
+- 方案 B：整块替换 upstream layout/footer/dashboard，再把 JustAPI 品牌补回去。
+  - 优点：视觉更接近 upstream 原貌；
+  - 缺点：最容易把 JustAPI 导航、页脚和品牌内容先冲掉，再进入漫长回填，冲突风险最高。
+- 方案 C：只引 dashboard 和 ratio settings，不动 layout。
+  - 优点：最安全；
+  - 缺点：整体 UI 收敛度不足，达不到“layout / dashboard 靠 upstream”的目标。
+- 结论：
+  - 采用方案 A；
+  - 允许“内容核”更新，但品牌壳必须作为硬边界保留；
+  - 因此所有 upstream UI 提交都要先按“整组引入 / 局部移植 / 明确排除”分层。
+
+### 15.4 专题分支与批次设计
+
+- 计划单开专题分支：`sync-upstream-ui-2026-04-16`
+- 该分支内部继续拆成 3 个执行子批次，避免一次性 merge 整片前端改写：
+
+1. `UI-1 Dashboard`
+   - 目标：使 dashboard 靠近 upstream，但不碰站点品牌外壳。
+   - 候选 upstream 提交：
+     - `606a4eee feat(dashboard): add admin user analytics and fix chart labels`
+     - `77897a81 feat(dashboard): enhance chart axes and update sorting logic`
+     - `aafbd788 feat(dashboard): add copy button next to API link in API info panel`
+     - `b2dd4acc fix(dashboard): 修复消耗分布图表悬浮时滚动条闪烁`
+   - 涉及文件：
+     - `controller/usedata.go`
+     - `model/usedata.go`
+     - `router/api-router.go`
+     - `web/src/components/dashboard/ChartsPanel.jsx`
+     - `web/src/components/dashboard/index.jsx`
+     - `web/src/components/dashboard/ApiInfoPanel.jsx`
+     - `web/src/helpers/dashboard.jsx`
+     - `web/src/hooks/dashboard/useDashboardCharts.jsx`
+     - `web/src/hooks/dashboard/useDashboardData.js`
+     - `web/src/index.css`
+     - `web/src/i18n/locales/*`
+   - 引入策略：
+     - `606a4eee` 与 `77897a81` 作为同一组处理，优先整组进入，因为图表行为和后端数据支撑耦合；
+     - `aafbd788` 可独立进入；
+     - `b2dd4acc` 仅在复现当前分布图 flicker 时进入，否则作为可选补丁保留。
+
+2. `UI-2 Ratio Settings`
+   - 目标：让倍率/定价设置页接近 upstream 新结构，但避免把 locale 大改和 token 表格无关差异整包卷入。
+   - 候选 upstream 提交：
+     - `dc83c4af refactor(settings): update RatioSetting component to use ModelPricingCombined and adjust tab structure`
+     - `78e4cb3c feat(web): redesign group ratio rules with collapsible grouped layout`
+     - `c2006093 fix(GroupTable): prevent Input cursor jumping to end on keystroke`
+   - 经过文件级检查后的结论：
+     - 早先提到的 `741aaf44` 实际只改 `SettingsChannelAffinity.jsx`，不属于本专题的 ratio settings 目标，本次从候选中移除。
+   - 涉及文件：
+     - `web/src/components/settings/RatioSetting.jsx`
+     - `web/src/pages/Setting/Ratio/GroupRatioSettings.jsx`
+     - `web/src/pages/Setting/Ratio/ModelPricingCombined.jsx`
+     - `web/src/pages/Setting/Ratio/components/AutoGroupList.jsx`
+     - `web/src/pages/Setting/Ratio/components/GroupGroupRatioRules.jsx`
+     - `web/src/pages/Setting/Ratio/components/GroupSpecialUsableRules.jsx`
+     - `web/src/pages/Setting/Ratio/components/GroupTable.jsx`
+     - `web/src/components/table/tokens/TokensColumnDefs.jsx`
+     - `web/src/components/table/tokens/TokensTable.jsx`
+     - `web/src/components/table/tokens/modals/EditTokenModal.jsx`
+     - `web/src/hooks/tokens/useTokensData.jsx`
+     - `web/src/i18n/locales/*`
+   - 引入策略：
+     - `dc83c4af` 不建议直接整条 cherry-pick，因为它携带了大规模 locale 重排和 token table 联动改动，优先采用“手工移植结构 + 选择性摘取逻辑”的方式；
+     - `78e4cb3c` 只建议局部摘取 `GroupGroupRatioRules.jsx` 与 `GroupSpecialUsableRules.jsx` 的折叠式布局思路，不建议整条直接进入；
+     - `c2006093` 在 `GroupTable.jsx` 已落地后可作为独立修复整条引入。
+
+3. `UI-3 Layout Polish`
+   - 目标：只吸收 upstream 的 layout mechanics 和局部 polish，不替换 JustAPI 品牌内容。
+   - 候选 upstream 提交：
+     - `310d618a style: enhance footer layout and add custom class for styling`
+     - `b2dd4acc fix(dashboard): 修复消耗分布图表悬浮时滚动条闪烁`（若 UI-1 未进入，可在此作为全局 CSS patch）
+   - 明确排除：
+     - `7399e472 feat: add slide-in animations and update translations for new UI elements`
+   - 排除原因：
+     - `7399e472` 实际重写了 `EditChannelModal.jsx` 并带入整批新 UI 文案，与本地 JustAPI 已经稳定的渠道编辑体验不相容；
+     - 它不是纯 layout polish，而是泛化 UI 重写，超出本专题“保留品牌壳”的边界。
+   - 涉及文件：
+     - `web/src/components/layout/PageLayout.jsx`
+     - `web/src/components/layout/Footer.jsx`
+     - `web/src/index.css`
+   - 引入策略：
+     - `310d618a` 只允许部分 hunk 进入：保留 class / semantic / responsive polish，禁止覆盖页脚文案和链接；
+     - `PageLayout.jsx` 若需要靠近 upstream，只能吸收容器结构、边栏折叠和滚动区组织，不得改变品牌同步逻辑与主导航信息架构。
+
+### 15.5 验证、回滚与冲突处理策略
+
+- 批次级验证门槛：
+  - 每个子批次都必须独立完成冲突检查、功能自检和构建验证，不能等到 3 个子批次全部结束后再统一兜底。
+  - 推荐验证顺序：
+    1. `git diff --name-only --diff-filter=U` 确认无未解决冲突；
+    2. 运行与该批次直接相关的 Go 定向测试；
+    3. `cd web && bun run build` 做前端编译兜底；
+    4. 必要时在浏览器中做人工 smoke test，重点核对 dashboard、ratio page、footer 与 branding 保留情况。
+- 子批次推荐验证命令：
+  - `UI-1 Dashboard`
+
+```powershell
+go test ./controller ./model ./router -run '^$' -count=1
+cd web
+bun run build
+```
+
+  - `UI-2 Ratio Settings`
+
+```powershell
+go test ./controller ./service ./setting/... -run '^$' -count=1
+cd web
+bun run build
+```
+
+  - `UI-3 Layout Polish`
+
+```powershell
+cd web
+bun run build
+```
+
+- 回滚点设计：
+  - 主题分支创建后，在每个子批次完成并验证通过后打一个清晰提交点，例如：
+    - `ui-sync: dashboard upstream alignment`
+    - `ui-sync: ratio settings upstream alignment`
+    - `ui-sync: layout polish without branding overwrite`
+  - 若某个子批次验证失败且修复成本继续膨胀，则只回退该子批次提交，不影响前序已验证通过的子批次。
+- 冲突处理准则：
+  - 任何改动只要触达以下文件，就默认进入“高冲突审查”：
+    - `web/src/components/layout/PageLayout.jsx`
+    - `web/src/components/layout/Footer.jsx`
+    - `web/src/components/dashboard/*`
+    - `web/src/components/settings/RatioSetting.jsx`
+    - `web/src/pages/Setting/Ratio/*`
+    - `web/src/i18n/locales/*`
+  - `locales/*` 只补本专题真正需要的新 key，不整包替换；
+  - 只要某个 upstream 提交同时修改品牌文案和通用布局，就必须拆 hunk，不能整条 cherry-pick；
+  - 只要某个 upstream 提交同时修改 dashboard/ratio 目标文件和无关的渠道管理、品牌页、通用动画，就默认优先手工移植，不整条引入。
+
+### 15.6 暴露的未知项（待用户回答）
+
+- `UI-1 Dashboard` 的信息架构是否要完全跟 upstream 对齐：
+  - 重点是 dashboard 卡片顺序、图表排列顺序、管理员专属分析模块的展示位置；
+  - 若不完全对齐，需要明确哪些顺序保留当前 JustAPI 布局。
+- `UI-1 Dashboard` 中 API 信息面板的 copy button 是否直接保留 upstream 行为：
+  - 该改动风险很低，但会轻微改变当前面板操作节奏；
+  - 默认建议保留。
+- `UI-2 Ratio Settings` 是否允许“一次性切到 `ModelPricingCombined`”：
+  - 若允许，冲突大但最终结构更接近 upstream；
+  - 若不允许，则需要保留当前页面骨架，只吸收可折叠规则区和局部交互，集成工作量会更高。
+- `UI-2 Ratio Settings` 的 locale 处理策略：
+  - 是接受这一页相关的 locale 成片更新，还是坚持只补最小 key；
+  - 默认建议只补最小 key，降低对你已有 JustAPI 文案的冲击。
+- `UI-3 Layout Polish` 的吸收上限：
+  - 只吸收 `Footer.jsx` 的 semantic/layout polish，还是连 footer 响应式对齐细节也一起带入；
+  - 默认建议吸收结构和响应式，不吸收任何文案与链接替换。
+- 主题分支的合流方式：
+  - 是每个子批次验证通过后就回合到 `rockyicer`；
+  - 还是 3 个子批次全部完成后再一次性回合；
+  - 默认建议每个子批次单独验收并回合，便于风险切分。
+
+### 15.7 用户已确认的执行决策（2026-04-16）
+
+- `UI-1 Dashboard`
+  - dashboard 卡片顺序、图表顺序、管理员分析模块位置：完全跟 upstream。
+  - API 信息面板的 copy button：保留 upstream 行为。
+- `UI-2 Ratio Settings`
+  - 允许一次性切到 `ModelPricingCombined`。
+  - 接受该页相关的 locale 成片更新。
+- `UI-3 Layout Polish`
+  - `Footer.jsx` 允许吸收更多 upstream 样式细节，但不得覆盖 JustAPI 的文案、链接与品牌内容。
+- 主题分支合流方式
+  - 每个子批次验证通过后就立即回合到 `rockyicer`。
+
+### Step-13: 冻结 UI 专题方向与品牌边界
+
+**Status:** Done
+
+**AC:**
+
+- 明确本专题不是整站回退 upstream branding，而是 `layout / dashboard` 靠 upstream、`branding` 保留 JustAPI。
+- 明确 branding 保留范围至少包括：
+  - 顶部导航的品牌名和入口结构；
+  - 页脚文案与链接；
+  - `About / Contact / Docs` 页面和跳转；
+  - Logo、站点名。
+- 将上述边界写回 `task_plan.md`，作为后续集成的硬约束。
+
+**Verification:**
+
+```powershell
+rg -n "brand|branding|PageLayout|Footer|About|Contact|Docs" web/src/components/layout web/src/pages web/src/helpers
+```
+
+**Deliverables:**
+
+- UI 专题的方向冻结记录
+- branding 保留边界清单
+- 不得覆盖的本地品牌元素列表
+
+**Iteration Log:**
+
+- Attempt-1 (2026-04-16): 基于 `Step-12` 的冻结结论继续追问产品边界，确认“layout / dashboard 靠 upstream，branding 保留 JustAPI”。
+- Result (2026-04-16): 已完成方向冻结；品牌保留范围已明确到顶部导航、页脚、About/Contact/Docs、Logo、站点名。
+
+### Step-14: 方案对比、推荐与选型落盘
+
+**Status:** Done
+
+**AC:**
+
+- 至少形成 2-3 个方案并给出 trade-off。
+- 明确推荐方案以及不推荐其他方案的原因。
+- 将最终选型写回 `task_plan.md`。
+
+**Verification:**
+
+```powershell
+git log --oneline rockyicer..upstream/main -- web/src/components/dashboard web/src/components/layout web/src/pages/Setting/Ratio web/src/components/settings/RatioSetting.jsx
+```
+
+**Deliverables:**
+
+- 方案 A / B / C 的对比
+- 推荐方案及理由
+- 已确认采用的专题策略
+
+**Iteration Log:**
+
+- Attempt-1 (2026-04-16): 对比“品牌壳 + upstream 内容核”“先全量替换再补品牌”“只引 dashboard 不动 layout”三种路径。
+- Result (2026-04-16): 已选择方案 A，因为它最符合“靠近 upstream UI，同时不冲掉 JustAPI branding”的目标。
+
+### Step-15: 专题分支拆分、候选 commit 与引入方式设计
+
+**Status:** Done
+
+**AC:**
+
+- 给出单独专题分支名称。
+- 将专题拆成 `UI-1 Dashboard / UI-2 Ratio Settings / UI-3 Layout Polish` 三个子批次。
+- 对每个子批次明确：
+  - 候选 upstream commit；
+  - 主要修改文件；
+  - 整组引入 / 局部移植 / 明确排除 的处理方式。
+
+**Verification:**
+
+```powershell
+git show --stat --oneline 606a4eee 77897a81 aafbd788
+git show --stat --oneline dc83c4af 78e4cb3c c2006093
+git show --stat --oneline 310d618a 7399e472 b2dd4acc
+```
+
+**Deliverables:**
+
+- 专题分支名
+- 三个子批次的 commit 清单
+- 每个子批次的文件范围和引入方式
+
+**Iteration Log:**
+
+- Attempt-1 (2026-04-16): 先按 dashboard / ratio / layout 三块拆批次，再从 `git show --stat` 回看文件级影响面。
+- Result (2026-04-16): 已完成分批设计；确认 `606a4eee + 77897a81` 适合作为 dashboard 核心组处理，`dc83c4af` 与 `78e4cb3c` 适合手工移植，`7399e472` 明确排除。
+
+### Step-16: 验证标准、回滚点与冲突处理准则固化
+
+**Status:** Done
+
+**AC:**
+
+- 为每个子批次给出最小验证命令集。
+- 明确每个子批次完成后的回滚点策略。
+- 明确 locale、layout、branding 重叠文件的冲突处理规则。
+
+**Verification:**
+
+```powershell
+git diff --name-only --diff-filter=U
+cd web
+bun run build
+```
+
+**Deliverables:**
+
+- 分批验证清单
+- 回滚点设计
+- 高冲突文件处置规则
+
+**Iteration Log:**
+
+- Attempt-1 (2026-04-16): 将“每批次都要检查是否和当前代码冲突、是否功能正确”的要求固化为统一验证和回滚规则。
+- Result (2026-04-16): 已形成批次级验证、按提交点回滚和 locales 只补最小 key 的统一准则。
+
+### Step-17: 待用户回答的未知项
+
+**Status:** Done
+
+**AC:**
+
+- 把当前无法从本地代码独立推断、但会显著影响 UI 专题实现方式的未知项一次性列出。
+- 未知项必须足够具体，用户可以直接逐条回答。
+- 只有在这些未知项被确认后，后续执行步骤才允许从 `Not Started` 进入 `In Progress`。
+
+**Verification:**
+
+```powershell
+Write-Output "等待用户回答 Step-17 中的未知项后继续执行"
+```
+
+**Deliverables:**
+
+- 一份可逐条答复的未知项清单
+- 每条未知项对应的默认建议
+- 后续执行步骤的解锁条件
+
+**Iteration Log:**
+
+- Attempt-1 (2026-04-16): 将 dashboard 信息架构、ratio 切换深度、locale 策略、layout 吸收上限、分支合流方式整理为待答列表。
+- Result-1 (2026-04-16): 当前 Blocked 于用户产品决策；默认建议已写入 `15.6 暴露的未知项（待用户回答）`。
+- Result-2 (2026-04-16): 用户已完成全部答复，解锁条件已满足；最终决策已写入 `15.7 用户已确认的执行决策（2026-04-16）`。
+
+### Step-18: 执行 UI-1 Dashboard 专题集成
+
+**Status:** In Progress
+
+**AC:**
+
+- 在 `sync-upstream-ui-2026-04-16` 上完成 dashboard 子批次集成。
+- 不破坏现有 JustAPI branding。
+- dashboard 相关后端与前端修改在功能上保持自洽并通过构建验证。
+
+**Verification:**
+
+```powershell
+git switch -c sync-upstream-ui-2026-04-16 rockyicer
+git cherry-pick 606a4eee 77897a81
+git cherry-pick aafbd788
+cd web
+bun run build
+```
+
+**Deliverables:**
+
+- dashboard 专题集成提交
+- 冲突处理记录
+- dashboard smoke test 结论
+
+**Iteration Log:**
+
+- Attempt-1 (Planned): 先处理 `606a4eee + 77897a81`，确认后端 usedata 接口与图表逻辑一致，再决定是否补 `aafbd788` 与 `b2dd4acc`。
+- Attempt-2 (2026-04-16): 用户已确认 dashboard 顺序完全跟 upstream，并保留 copy button；按该决策进入实现阶段，优先整组集成 `606a4eee + 77897a81`，再补 `aafbd788`，并视 flicker 复现情况决定是否引入 `b2dd4acc`。
+
+### Step-19: 执行 UI-2 Ratio Settings 专题集成
+
+**Status:** Not Started
+
+**AC:**
+
+- 在不冲掉现有 JustAPI 文案与无关 token 管理行为的前提下，引入 upstream 的 ratio settings 结构增强。
+- `GroupTable.jsx` 的输入体验正确，页面可以完成构建。
+- locale 改动范围受控，符合 Step-17 的最终决定。
+
+**Verification:**
+
+```powershell
+cd web
+bun run build
+```
+
+**Deliverables:**
+
+- ratio settings 专题集成提交
+- 手工移植与局部摘取说明
+- locale 差异控制记录
+
+**Iteration Log:**
+
+- Attempt-1 (Planned): 先手工移植 `dc83c4af` 的页签结构与 `ModelPricingCombined` 入口，再局部摘取 `78e4cb3c` 的折叠规则区，最后补 `c2006093`。
+
+### Step-20: 执行 UI-3 Layout Polish 专题集成
+
+**Status:** Not Started
+
+**AC:**
+
+- 在保留 `JustAPI` 品牌壳的前提下，引入 layout / footer 的 upstream polish。
+- `Footer.jsx` 的文案、链接、分组名称不被 upstream 覆盖。
+- `PageLayout.jsx` 不破坏品牌同步链、主导航入口和现有边栏行为。
+
+**Verification:**
+
+```powershell
+cd web
+bun run build
+```
+
+**Deliverables:**
+
+- layout polish 专题集成提交
+- `Footer.jsx` 局部移植说明
+- branding 保留自检记录
+
+**Iteration Log:**
+
+- Attempt-1 (Planned): 只移植 `310d618a` 中与语义结构、class 名和响应式有关的 hunk；若 dashboard flicker 仍存在，再补 `b2dd4acc`。
+
+### Step-21: UI 专题总验证、回合与验收
+
+**Status:** Not Started
+
+**AC:**
+
+- `UI-1 / UI-2 / UI-3` 都完成且通过验证。
+- 确认 dashboard、ratio settings、layout 都靠近 upstream，但 branding 仍保持 JustAPI。
+- 形成是否回合到 `rockyicer` 的最终决策与提交策略。
+
+**Verification:**
+
+```powershell
+go test ./controller ./model ./router -run '^$' -count=1
+go test ./service ./setting/... -run '^$' -count=1
+cd web
+bun run build
+```
+
+**Deliverables:**
+
+- UI 专题最终验收记录
+- 是否回合到 `rockyicer` 的结论
+- 后续 push / PR 建议
+
+**Iteration Log:**
+
+- Attempt-1 (Planned): 待 `Step-17` 解锁并完成 `Step-18` ~ `Step-20` 后执行总验证，再决定分批回合还是一次性回合。
