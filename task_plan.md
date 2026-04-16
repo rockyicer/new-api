@@ -2277,3 +2277,225 @@ bun run build
 - Result (2026-04-16):
   - `node --test src/helpers/sidebar-config.test.js` 通过，3 个测试全部转绿。
   - `bun run build` 在 `web/` 目录通过，Vite 输出 built in 1m 26s。
+
+## 14. 保留 JustAPI 定制前提下分批吸收 Upstream 新能力（2026-04-16）
+
+### 14.1 需求理解摘要
+
+- 目标不是直接把 `upstream/main` 整体合并进当前分支，而是“尽量保住现在的 JustAPI 定制，同时吃到 upstream 的新能力”。
+- 本轮需要先把 `QuantumNous/new-api:main` 相对当前分支 `rockyicer` 的 `166` 个上游提交整理成一份可执行的分主题清单。
+- 该清单必须按 `建议带 / 可选 / 暂缓` 三列分类，作为后续分批 cherry-pick / backport 的依据。
+- 计划必须写入同一份 `task_plan.md`，并沿用现有 Step 编号继续追加。
+
+### 14.2 待定参数清单
+
+- 默认保留 `JustAPI` branding、关于页、联系页、部署文档、token portal、token period quota、sidebar 控制逻辑，不主动让上游覆盖。
+- 默认不在第一批引入 dashboard 大改、group ratio / pricing settings 大改、footer / layout / i18n 表现层重构。
+- 默认将 merge commits 仅作为追溯线索，不作为首选 cherry-pick 目标；优先挑选其下的叶子功能提交。
+
+### 14.3 执行决议
+
+- 采用“按主题分批回引”的策略，不做一次性 `merge upstream/main`。
+- 先锁定分叉事实与冲突画像，再生成三列分层清单，最后给出后续批次化执行路线。
+- 当前基线结论：
+  - `rockyicer` 相对 `upstream/main` 为 `behind 166 / ahead 53`。
+  - 分叉点为 `d096a2e5`。
+  - 自分叉点以来，两边真正改到同一文件的重叠文件数为 `34`。
+  - 上游改动密度最高的区域是 `web/src` 与 `relay/channel`；你的自定义改动密度最高的区域是 `web/src`、`router/api-router.go`、`model/*`、`controller/*`。
+- 因此，适合先带入“低冲突高价值”的 provider / relay / security / payment 主题，不适合一上来碰 dashboard、ratio setting、layout 和 branding。
+
+### 14.4 Upstream 166 提交分主题清单（三列）
+
+| 建议带 | 可选 | 暂缓 |
+| --- | --- | --- |
+| Relay / provider 兼容与新能力：`ff29900f` llama.cpp cache-hit token、`263b9bc6` Claude inline file、`3ab65a82` Azure `/v1/responses/compact`、`c734db34` minimax image、`18373c6e` `e5b5331d` Wan 2.7、`b7c0f754` `22692b3f` `dafc7618` Seedance 2.0 / Duration / fail reason、`79527c0a` `f449e06b` `9816ad87` HEIC/HEIF、`23fde25b` Gemini streaming、`3cad6b9d` `82c2008d` `bb5b9eac` `8b221615` Claude 兼容修复、`d22f889e` xAI/Grok、`160cb285` zhipu_4v、`274307b0` `53cf37a4` ali usage string、`3bda738e` compact model pricing、`a19a63b9` vllm-omini 字段补齐 | Channel affinity / retry 规则：`b09337e6` preferred channel honor skip-retry、`5fe8e98e` codex/claude affinity 默认 skip retry、`45f65c29` regex ignored upstream models、`6154b8e3` `22b6b167` 暴露 skip-retry UI、`70560d53` `116e0b8f` `1ad25576` include_model_name | Dashboard / analytics / chart 大改：`606a4eee` admin user analytics、`77897a81` chart axes / sorting、`7cfaf6c3` dimension / ranking、`b2dd4acc` 消耗分布图滚动闪烁修复 |
+| Auth / security / ops：`d955a0c0` OAuth 回当前页、`f40eb4e5` oauth bind callback、`e099117c` account binding POST、`2819e3a1` login error handling、`59c582d1` token auth 防信息泄漏、`20399d3c` SSRF 防护、`a5e20269` Docker / release CI hardening、`cf1b4853` 错误日志 env、`a18ea3cc` AUTH LOGIN 发件支持 | 日志与运维体验：`e904579a` `dcd09116` `13122aa0` `49db5147` 服务端日志文件管理、`c9611c49` usage logs stream status tooltip、`b4df9955` error logs 中的 isStream 修复 | Group ratio / pricing / settings UI：`78e4cb3c` group ratio rules 重做、`dc83c4af` RatioSetting 切到 `ModelPricingCombined`、`ed7f8399` model price error UX 大改 |
+| Payment / topup / subscription：`8aaec8b1` TopUp.PaymentMethod、`b2a40d33` Stripe async webhook、`040e8c1d` amount-first quota adjust、`d15e14b1` `bf130c5c` quota adjustment logs 带管理员用户名、`2bedd31b` 订阅卡片显示 next quota reset | Playground / resilience / small UX：`559c98f2` Web ErrorBoundary、`4cd0e365` `427fb7ea` playground max_tokens、`a706f002` EditChannelModal advanced settings localStorage、`aafbd788` API info copy button、`8bb9a42f` `670abee2` channel clipboard magic string | Layout / footer / i18n 表现层：`7399e472` slide-in animations、`310d618a` footer layout、`5402bf41` 暴露 i18n instance 到 window、`1baf4a63` localization files 更新 |
+| 小而值钱的后端修复：`1911520e` oauth bearer token type normalize、`ded4a124` OpenAI detail 空字段修复、`deff59a5` scanner buffer 提高与 gpt-5.4-nano prefix、`e520977e` forced beta query、`9f61407b` `d4a470a6` OpenRouter billing 语义修复、`926e1781` Claude cache usage 保留、`ab99c308` image count double-counting 修复 | Docs / deps / maintenance：`cf86fe5f` `e80d867f` BT 文档、`b81d3427` `3d0ac2d0` axios、`40dc43f4` x/image、`ded3bb9c` bedrockruntime、electron 相关 dependabot 提交 | 直接改 branding / 文案 / README 表现层的上游提交默认暂缓，避免冲掉 `JustAPI` 定制；若后续只取技术改动，可单独人工摘取，不整批带入 |
+
+**Notes:**
+
+- 上表已经覆盖 166 个上游提交的主要功能主题；其中 `42` 个 merge commits 默认只作追溯来源，不作为首选回引对象。
+- 若某主题存在 merge commit 与叶子提交同时出现，后续执行时优先 cherry-pick 叶子功能提交，避免把无关上下文一起卷入。
+
+### Step-08: 固化 upstream 基线与冲突画像
+
+**Status:** Done
+
+**AC:**
+
+- 确认当前分支相对 `upstream/main` 的真实差异不是 GitHub 页面误报。
+- 给出明确的 `behind / ahead` 数字、分叉点 SHA 和重叠文件数。
+- 列出后续集成最需要注意的高冲突目录。
+
+**Verification:**
+
+```powershell
+git fetch upstream main
+git rev-list --count rockyicer..upstream/main
+git rev-list --count upstream/main..rockyicer
+git merge-base rockyicer upstream/main
+$mb = git merge-base rockyicer upstream/main
+$up = git diff --name-only $mb upstream/main | Sort-Object -Unique
+$mine = git diff --name-only $mb rockyicer | Sort-Object -Unique
+$mineSet = @{}; foreach ($f in $mine) { $mineSet[$f] = $true }
+$overlap = $up | Where-Object { $mineSet.ContainsKey($_) }
+$overlap.Count
+```
+
+**Deliverables:**
+
+- 分叉事实确认
+- 高冲突目录清单
+- 后续分批回引的风险基线
+
+**Iteration Log:**
+
+- Attempt-1 (2026-04-16): 先抓取 `upstream/main`，再分别计算 `rockyicer..upstream/main` 与 `upstream/main..rockyicer`，避免被 GitHub 网页的单向提示误导。
+- Result (2026-04-16): 确认当前状态为 `behind 166 / ahead 53`，分叉点为 `d096a2e5`，真正同文件重叠数为 `34`，高冲突区集中在 `web/src`、`controller/*`、`model/*`、`service/*`。
+
+### Step-09: 生成 166 提交分主题清单并完成三列分层
+
+**Status:** Done
+
+**AC:**
+
+- 将 166 个上游提交按主题归类，而不是按时间平铺。
+- 输出 `建议带 / 可选 / 暂缓` 三列清单。
+- 明确说明哪些 merge commits 只用于追溯，不推荐直接 cherry-pick。
+
+**Verification:**
+
+```powershell
+git log --reverse --date=short --pretty=format:"%h`t%ad`t%s" rockyicer..upstream/main
+$subjects = git log --pretty=format:'%s' rockyicer..upstream/main
+$groups = $subjects | ForEach-Object {
+  if ($_ -match '^(feat|fix|refactor|chore|docs|style|security|test)(\(|:|\b)') { $matches[1].ToLower() }
+  elseif ($_ -match '^Merge pull request') { 'merge' }
+  elseif ($_ -match '^Update\b') { 'update' }
+  else { 'other' }
+} | Group-Object | Sort-Object Count -Descending
+$groups | ForEach-Object { "{0}`t{1}" -f $_.Count, $_.Name }
+```
+
+**Deliverables:**
+
+- 三列分层清单
+- 提交类型统计
+- 主题化摘要与代表性 commit hash
+
+**Iteration Log:**
+
+- Attempt-1 (2026-04-16): 先把 166 个提交全部拉平成 subject 列表，再以功能主题重组，最后按收益/冲突比落到三列。
+- Result (2026-04-16): 完成 `建议带 / 可选 / 暂缓` 清单；统计结果为 `42 feat / 51 fix / 12 refactor / 42 merge`，确认 merge commits 仅作追溯用途。
+
+### Step-10: 批次 A 计划（建议带）
+
+**Status:** Done
+
+**AC:**
+
+- 新建一条集成分支，例如 `sync-upstream-2026-04-16`。
+- 第一批仅处理 `建议带` 列中的主题：
+  - provider / relay 兼容与新能力；
+  - auth / security / ops；
+  - payment / topup / subscription；
+  - 小而值钱的后端修复。
+- 第一批不得引入 branding、dashboard、layout、ratio setting 表现层大改。
+
+**Verification:**
+
+```powershell
+git switch -c sync-upstream-2026-04-16 rockyicer
+git cherry-pick <batch-a-commit-list>
+go test ./...
+cd web
+bun run build
+```
+
+**Deliverables:**
+
+- 批次 A 的明确 cherry-pick 清单
+- 一条独立的集成分支
+- 冲突处理记录与验证结果
+
+**Result:**
+
+- 已创建集成分支 `sync-upstream-2026-04-16`，并在该分支完成 Batch A 集成。
+- 已带入的 upstream 提交分组：
+  - provider / relay: `ff29900f`、`263b9bc6`、`3ab65a82`、`23fde25b`、`3cad6b9d`、`82c2008d`、`160cb285`、`274307b0`
+  - OAuth / auth / security / ops: `f40eb4e5`、`1911520e`、`d955a0c0`、`e099117c`、`2819e3a1`、`59c582d1`、`20399d3c`、`cf1b4853`
+  - payment / topup / subscription: `8aaec8b1`、`b2a40d33`、`2bedd31b`、`040e8c1d`、`d15e14b1`
+  - compatibility / format support: `79527c0a`、`f449e06b`、`a18ea3cc`
+- 额外做了 1 处最小 manual backport：在 `dto.Usage` 中补回 `usage_semantic / usage_source` 字段，以承接上游 Claude usage 修复链路，而不引入无关旧 UI 改动。
+- 过程中 2 次遇到“提交本身依赖未满足”的情况：
+  - `82c2008d` 首次验证失败，补齐 `dto.Usage` 字段后恢复通过。
+  - `d15e14b1` 首次引入时因缺少 `040e8c1d` 的 add_quota 基础而失败，先回退，待 `040e8c1d` 成功合入后重新 cherry-pick 并通过验证。
+- 未引入 branding、dashboard、layout、ratio setting 大改，保持 JustAPI 定制不被上游表现层重写。
+
+**Iteration Log:**
+
+- Attempt-1 (Planned): 先按 provider / security / payment 三个子批次拆开执行，每个子批次单独验证，避免一次性引入过大上下文。
+- Attempt-2 (2026-04-16): 进入执行阶段，先切集成分支，再把 Batch A 精简成低冲突 cherry-pick 清单；每个子批次完成后都要做冲突检查、定向测试与前端构建验证。
+- Result-1 (2026-04-16): provider / relay 子批次完成，解决了 `relay/channel/claude/relay_claude_test.go`、`relay/channel/claude/relay-claude.go`、`service/convert.go` 的连续冲突，并通过 `go test ./relay/channel/claude ./dto ./service` 与 `go test ./... -run '^$'`。
+- Result-2 (2026-04-16): payment / topup / subscription 子批次完成，解决了 `controller/topup_stripe.go` 的两轮冲突，并通过 `go test ./controller ./model ./relay/helper ./relay/channel/gemini ./oauth ./service`、`go test ./... -run '^$'`。
+- Result-3 (2026-04-16): OAuth / auth / security / ops 子批次完成，`web/src/helpers/api.js`、`controller/user.go`、`router/api-router.go`、`web/src/i18n/locales/*.json` 均已校验通过，并通过 `bun run build`。
+- Result-4 (2026-04-16): `040e8c1d` 高重叠批次实际只在 `EditTokenModal.jsx` 与中英文 locale 出现冲突；完成手工合并后，重新带回 `d15e14b1`，并通过 `go test ./service ./dto ./relay/channel/claude`、`go test ./... -run '^$'` 与 `bun run build`。
+
+### Step-11: 批次 B 计划（可选）
+
+**Status:** Not Started
+
+**AC:**
+
+- 仅在批次 A 稳定后再处理 `可选` 列。
+- 重点围绕：
+  - channel affinity / retry 规则；
+  - 服务端日志管理与 usage log UX；
+  - playground / ErrorBoundary / 小型前端体验增强。
+- 对 `controller/user.go`、`model/token.go`、`service/quota.go`、`service/task_billing.go` 这类重叠点逐文件评估，不允许盲目整批并入。
+
+**Verification:**
+
+```powershell
+git cherry-pick <batch-b-commit-list>
+go test ./...
+cd web
+bun run build
+```
+
+**Deliverables:**
+
+- 批次 B 的候选提交列表
+- 冲突热点文件逐项处理说明
+- 功能回归验证记录
+
+**Iteration Log:**
+
+- Attempt-1 (Planned): 先做 channel affinity，再做 log management / usage log UX，最后做 playground / ErrorBoundary，小步前进。
+
+### Step-12: 批次 C 计划（暂缓）
+
+**Status:** Not Started
+
+**AC:**
+
+- 对 `暂缓` 列中的 dashboard、ratio settings、layout、branding 表现层改动，不在前两批中混入。
+- 在是否需要长期接近 upstream UI/交互风格的问题上，先做一次产品层决策，再决定是否引入。
+- 若决定引入，需单独建立专题集成分支，而不是混入批次 A/B。
+
+**Verification:**
+
+```powershell
+git log --oneline rockyicer..upstream/main -- web/src/components/dashboard web/src/components/layout web/src/pages/Setting
+```
+
+**Deliverables:**
+
+- 暂缓区专题清单
+- 是否需要后续专题集成的决策门
+- 避免冲掉 `JustAPI` 定制的边界说明
+
+**Iteration Log:**
+
+- Attempt-1 (Planned): 在批次 A/B 完成并稳定后，再决定是否开启 dashboard / settings / layout 的专题集成。
